@@ -1,0 +1,88 @@
+<ym-settings-tabs />
+<div class="mb-4">
+  <h1 class="text-xl font-bold">Ajustes › Plataformas</h1>
+  <p class="max-w-3xl text-sm muted">
+    Claves que necesita YoutubeMeta para conectar cuentas. Se guardan <b>cifradas</b> en la base y nunca se vuelven a mostrar completas.
+    Lo guardado aquí tiene prioridad sobre user-secrets o las variables de IIS. Para publicar, Facebook, Instagram y WhatsApp no necesitan nada aquí: cada cuenta guarda su token al conectarla.
+    La <b>app de Meta</b> solo hace falta para que lleguen sus mensajes y comentarios a la <a routerLink="/inbox">Bandeja</a>.
+  </p>
+</div>
+
+<ym-async-state [loader]="settings">
+@if (settings.value(); as s) {
+  <div class="grid gap-4 xl:grid-cols-2">
+    <!-- CLIENTES OAUTH -->
+    @for (c of clients(); track c.platform) {
+      @if (sourceOf(s, c); as src) {
+        <section class="card p-4">
+          <ym-client-card [platform]="c.platform" [source]="src" [form]="forms()[c.platform]" [text]="c.text" [busy]="busy() !== null" [saving]="busy() === c.platform"
+                          (patchForm)="patchClient(c.platform, $event)" (save)="saveClient(c)" (remove)="deleteClient(src, c.text.title)" (copy)="copy($event)" />
+          @if (c.platform === 'TIKTOK' && !src.redirectUri) {
+            <div class="notice notice-warn mt-3">
+              Falta la <b>RedirectUri</b> de TikTok en el servidor (<code>Tiktok:RedirectUri</code> en user-secrets o <code>Tiktok__RedirectUri</code> en IIS). TikTok exige una dirección <b>https</b>.
+              <a routerLink="/guides/tiktok" [queryParams]="{ step: 'servidor' }">Cómo configurarla</a>.
+            </div>
+          }
+          @if (c.platform === 'LINKEDIN_ORG') {
+            <p class="hint mt-2">Solo funciona cuando LinkedIn aprueba la app con <b>Community Management API</b>. <a routerLink="/guides/linkedin" [queryParams]="{ step: 'empresa-app' }">Cómo pedirla</a>.</p>
+          }
+        </section>
+      }
+    }
+
+    @if (telegramEnabled()) {
+    <section class="card p-4 xl:col-span-2">
+      <div class="mb-3 flex flex-wrap items-center gap-2">
+        <h2 class="flex flex-1 items-center gap-2 font-semibold"><ym-icon name="telegram" [size]="18" class="text-telegram" /> Bots de Telegram</h2>
+        <a routerLink="/guides/telegram" class="btn btn-sm no-underline"><ym-icon name="book" [size]="13" /> Guía</a>
+        <button type="button" class="btn btn-telegram btn-sm" (click)="startBot(null)"><ym-icon name="plus" [size]="13" /> Añadir bot</button>
+      </div>
+
+      @for (bot of s.telegramBots; track bot.id) {
+        <div class="mb-2 flex flex-wrap items-center gap-3 rounded-xl border border-line p-3">
+          <ym-account-avatar platform="TELEGRAM" [size]="36" />
+          <div class="min-w-0 flex-1">
+            <div class="font-semibold">{{ bot.name }} <span class="text-xs font-normal muted">id {{ bot.publicId }}</span></div>
+            <div class="text-xs muted">
+              {{ bot.options.apiBaseUrl ? 'Servidor propio ' + bot.options.apiBaseUrl : 'Servidor público de Telegram' }} · hasta {{ bot.options.maxUploadMb ?? telegramMaxMb }} MB por video
+              · {{ bot.inUse }} {{ bot.inUse === 1 ? 'canal' : 'canales' }} · actualizado {{ (bot.updatedAt ?? bot.createdAt) | date: 'dd/MM/yyyy' }}
+            </div>
+          </div>
+          <button type="button" class="btn btn-sm" (click)="startBot(bot)">Editar</button>
+          <button type="button" class="btn btn-ghost btn-sm btn-danger" [disabled]="bot.inUse > 0" [title]="bot.inUse > 0 ? 'Quita antes sus canales en Conexiones' : ''" (click)="deleteBot(bot)">Borrar</button>
+        </div>
+      } @empty {
+        <p class="text-sm muted">No hay bots. Crea uno con &#64;BotFather en Telegram y pega aquí su token.</p>
+      }
+
+      @if (botFormOpen() || s.telegramBots.length === 0) {
+        <ng-container [ngTemplateOutlet]="botForm" />
+      }
+    </section>
+    }
+  </div>
+}
+</ym-async-state>
+<ng-template #botForm>
+  <div class="mt-3 grid gap-3 rounded-xl border border-dashed border-line-strong p-3">
+    <b class="text-sm">{{ editingBot() ? 'Editar ' + editingBot()!.name : 'Nuevo bot' }}</b>
+    <div>
+      <label class="label" for="bot-token">Token del bot @if (!editingBot()) { <ym-req /> } <small>{{ editingBot() ? 'vacío = conservar el guardado' : 'te lo da @BotFather al crear el bot' }}</small></label>
+      <input id="bot-token" type="password" class="input font-mono text-xs" [(ngModel)]="botToken" placeholder="123456789:AA…" autocomplete="new-password" spellcheck="false" />
+    </div>
+    <div class="grid gap-3 sm:grid-cols-[1fr_160px]">
+      <div>
+        <label class="label" for="bot-url">Servidor Bot API propio <small>opcional · para videos de más de 50 MB</small></label>
+        <input id="bot-url" class="input font-mono text-xs" [(ngModel)]="botBaseUrl" placeholder="http://localhost:8081 (vacío = api.telegram.org)" />
+      </div>
+      <div>
+        <label class="label" for="bot-mb">Máximo por video (MB)</label>
+        <input id="bot-mb" type="number" min="1" max="2000" class="input" [(ngModel)]="botMaxMb" [placeholder]="botBaseUrl() ? '2000' : '50'" />
+      </div>
+    </div>
+    <div class="flex gap-2">
+      <button type="button" class="btn btn-telegram btn-sm" [disabled]="(!editingBot() && botToken().trim().length < 20) || busy() !== null" (click)="saveBot()">{{ busy() === 'bot' ? 'Comprobando con Telegram…' : 'Guardar bot' }}</button>
+      @if (botFormOpen()) { <button type="button" class="btn btn-ghost btn-sm" (click)="startBot(null, false)">Cancelar</button> }
+    </div>
+  </div>
+</ng-template>

@@ -1,0 +1,147 @@
+<div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <h1 class="text-xl font-bold">Resultados</h1>
+    <p class="text-sm muted">Lo publicado en el periodo, por día y por cuenta, lo atendido en la bandeja y la salud del sistema.</p>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    <ym-filter-chips ariaLabel="Periodo" [options]="periods" [value]="days()" (valueChange)="setDays($event)" />
+    <button type="button" class="btn btn-sm" [disabled]="exporting()" (click)="exportCsv()"><ym-icon name="download" [size]="13" /> {{ exporting() ? 'Exportando…' : 'Exportar CSV' }}</button>
+  </div>
+</div>
+
+<div class="grid gap-4 xl:grid-cols-[1fr_360px]">
+  <div class="grid min-w-0 content-start gap-4">
+    <ym-async-state [loader]="insights">
+      @if (insights.value(); as r) {
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <ym-kpi-tile label="Publicadas" icon="success" [value]="r.published | number" tone="text-green-600 dark:text-green-400" />
+          <ym-kpi-tile label="Fallidas" icon="error" [value]="r.failed | number" [tone]="r.failed ? 'text-red-600 dark:text-red-400' : ''" />
+          <ym-kpi-tile label="Tasa de éxito" [value]="(r.successRate | number: '1.0-1') + ' %'" />
+          <ym-kpi-tile label="Tiempo medio" icon="clock" [value]="r.avgMinutes != null ? (r.avgMinutes | number: '1.0-0') + ' min' : '—'" hint="de la cola a publicado" />
+          <ym-kpi-tile label="Vistas" icon="eye" [value]="r.views | number" />
+          <ym-kpi-tile label="Me gusta" icon="heart" [value]="r.likes | number" />
+          <ym-kpi-tile label="Comentarios" icon="message" [value]="r.comments | number" />
+        </div>
+
+        <section class="card mt-4 p-4">
+          <h2 class="mb-2 font-semibold">Por día</h2>
+          <ym-bar-chart [title]="'Publicaciones por día en los últimos ' + r.days + ' días'" [series]="series" [data]="chartData()" />
+        </section>
+
+        <section class="card mt-4 p-4" aria-labelledby="insights-inbox">
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <h2 id="insights-inbox" class="font-semibold">Bandeja</h2>
+            <a routerLink="/inbox" class="text-sm">Abrir la bandeja →</a>
+          </div>
+          <div class="mb-3 grid grid-cols-3 gap-3">
+            <ym-kpi-tile label="Mensajes recibidos" icon="inbox" [value]="r.inbox.received | number" />
+            <ym-kpi-tile label="Respuestas enviadas" icon="send" [value]="r.inbox.sent | number" />
+            <ym-kpi-tile label="Respuesta media" icon="clock" [value]="formatMinutes(r.inbox.avgResponseMinutes)" hint="desde el primer mensaje sin responder" />
+          </div>
+          @if (r.inbox.platforms.length) {
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[480px] text-sm">
+                <thead><tr class="border-b border-line text-left text-xs muted"><th class="py-2 pr-3">Red</th><th class="py-2 pr-3 text-right">Recibidos</th><th class="py-2 pr-3 text-right">Respondidos</th><th class="py-2 pr-3 text-right">Conversaciones</th><th class="py-2 text-right">Respuesta media</th></tr></thead>
+                <tbody>
+                  @for (p of r.inbox.platforms; track p.platform) {
+                    <tr class="border-b border-line-soft last:border-0">
+                      <td class="py-2 pr-3"><ym-platform-badge [platform]="p.platform" [size]="14" /></td>
+                      <td class="py-2 pr-3 text-right tabular-nums">{{ p.received | number }}</td>
+                      <td class="py-2 pr-3 text-right tabular-nums">{{ p.sent | number }}</td>
+                      <td class="py-2 pr-3 text-right tabular-nums">{{ p.conversations | number }}</td>
+                      <td class="py-2 text-right tabular-nums">{{ formatMinutes(p.avgResponseMinutes) }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          } @else {
+            <p class="text-sm muted">Todavía no llegaron mensajes en este periodo.</p>
+          }
+        </section>
+
+        <section class="card mt-4 p-4">
+          <h2 class="mb-2 font-semibold">Por cuenta</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr class="border-b border-line text-left text-[11px] uppercase tracking-wide muted">
+                  <th class="py-2 pr-3">Cuenta</th><th class="py-2 pr-3 text-right">Publicadas</th><th class="py-2 pr-3 text-right">Fallidas</th>
+                  <th class="py-2 pr-3 text-right">Vistas</th><th class="py-2 pr-3 text-right">Me gusta</th><th class="py-2 pr-3 text-right">Comentarios</th><th class="py-2 text-right">Tiempo medio</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (a of r.accounts; track a.connectionId) {
+                  <tr class="border-b border-line-soft last:border-0">
+                    <td class="py-2 pr-3"><span class="flex items-center gap-2"><ym-account-avatar [platform]="a.platform" [name]="a.connectionName" [url]="a.avatarUrl" [size]="24" /> <span class="truncate">{{ a.connectionName }}</span></span></td>
+                    <td class="py-2 pr-3 text-right tabular-nums">{{ a.published | number }}</td>
+                    <td class="py-2 pr-3 text-right tabular-nums" [class.text-red-600]="a.failed">{{ a.failed | number }}</td>
+                    @if (meta[a.platform].noMetrics) {
+                      <td class="py-2 pr-3 text-right muted" title="Esta plataforma no da estadísticas">—</td><td class="py-2 pr-3 text-right muted">—</td><td class="py-2 pr-3 text-right muted">—</td>
+                    } @else {
+                      <td class="py-2 pr-3 text-right tabular-nums">{{ a.views | number }}</td>
+                      <td class="py-2 pr-3 text-right tabular-nums">{{ a.likes | number }}</td>
+                      <td class="py-2 pr-3 text-right tabular-nums">{{ a.comments | number }}</td>
+                    }
+                    <td class="py-2 text-right tabular-nums">{{ a.avgMinutes != null ? (a.avgMinutes | number: '1.0-0') + ' min' : '—' }}</td>
+                  </tr>
+                } @empty {
+                  <tr><td colspan="7" class="py-6 text-center muted">Sin publicaciones en este periodo.</td></tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      }
+    </ym-async-state>
+  </div>
+
+  <section class="card h-max p-4" aria-labelledby="health-title">
+    <div class="mb-3 flex items-center gap-2">
+      <h2 id="health-title" class="flex-1 font-semibold">Salud del sistema</h2>
+      @if (health.value(); as h) { <ym-chip [tone]="healthMeta[h.status].tone">{{ healthMeta[h.status].label }}</ym-chip> }
+      <button type="button" class="btn btn-ghost btn-sm btn-icon" aria-label="Actualizar" (click)="health.reload()"><ym-icon name="retry" [size]="14" /></button>
+    </div>
+    <ym-async-state [loader]="health">
+      @if (health.value(); as h) {
+        @if (h.alerts.length) {
+          <ul class="mb-3 grid gap-1.5" role="list" aria-label="Alertas">
+            @for (alert of h.alerts; track $index) {
+              <li class="notice flex items-start gap-1.5" [class]="h.status === 'error' ? 'notice-error' : 'notice-warn'"><ym-icon name="warning" [size]="13" class="mt-px shrink-0" /> {{ alert }}</li>
+            }
+          </ul>
+        }
+        <dl class="mb-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+          <dt class="muted">En cola ahora</dt><dd class="text-right tabular-nums">{{ h.queue.queueDue }}</dd>
+          <dt class="muted">Enviándose</dt><dd class="text-right tabular-nums">{{ h.queue.processing }}</dd>
+          <dt class="muted">Programadas</dt><dd class="text-right tabular-nums">{{ h.queue.scheduled }}</dd>
+          <dt class="muted">Espera más antigua</dt><dd class="text-right tabular-nums">{{ h.queue.oldestDueMinutes != null ? h.queue.oldestDueMinutes + ' min' : '—' }}</dd>
+          <dt class="muted">Subidas atascadas</dt><dd class="text-right tabular-nums" [class.text-red-600]="h.queue.stuckUploads">{{ h.queue.stuckUploads }}</dd>
+          <dt class="muted">Por revisar</dt><dd class="text-right tabular-nums" [class.text-amber-600]="h.queue.needsReview">{{ h.queue.needsReview }}</dd>
+          <dt class="muted">Fallidas (7 días)</dt><dd class="text-right tabular-nums">{{ h.queue.failedLast7Days }}</dd>
+          <dt class="muted">Cuentas por reconectar</dt><dd class="text-right tabular-nums" [class.text-red-600]="h.queue.connectionsNeedingReconnect">{{ h.queue.connectionsNeedingReconnect }}</dd>
+          <dt class="muted">Tokens a punto de caducar</dt><dd class="text-right tabular-nums">{{ h.queue.tokensExpiringSoon }}</dd>
+          <dt class="muted">Pruebas fallidas</dt><dd class="text-right tabular-nums">{{ h.queue.connectionsFailingTest }}</dd>
+        </dl>
+        @if (quota(); as q) {
+          <div class="grid gap-3">
+            <ym-progress label="Subidas a YouTube hoy" [valueText]="h.youtubeUploadsUsed + ' / ' + h.youtubeUploadsLimit" [value]="q.uploads" />
+            <ym-progress label="Unidades de YouTube hoy" [valueText]="h.youtubeUnitsUsed + ' / ' + h.youtubeUnitsLimit" [value]="q.units" />
+            <ym-progress label="Almacenamiento" [valueText]="formatBytes(h.storageFreeBytes) + ' libres'" [value]="q.storage" />
+          </div>
+        }
+        @if (lanes().length) {
+          <h3 class="mb-1 mt-4 text-xs font-semibold">Trabajos en segundo plano</h3>
+          <ul class="grid gap-0.5 text-xs">
+            @for (l of lanes(); track l.lane) {
+              <li class="flex items-center justify-between gap-2">
+                <span class="flex items-center gap-1.5"><ym-icon name="dot" [size]="9" [class]="l.stale ? 'text-amber-500' : 'text-green-500'" [label]="l.stale ? 'atrasado' : 'al día'" /> {{ l.label }}</span>
+                <span class="muted">{{ l.ago }}</span>
+              </li>
+            }
+          </ul>
+        }
+      }
+    </ym-async-state>
+  </section>
+</div>

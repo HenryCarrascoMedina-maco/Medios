@@ -1,0 +1,40 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>YoutubeMeta.Api</RootNamespace>
+    <UserSecretsId>youtubemeta-api</UserSecretsId>
+    <WebRoot>..\YoutubeMeta.Web\</WebRoot>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Dapper" Version="2.1.66" />
+    <PackageReference Include="Google.Apis.YouTube.v3" Version="1.78.0.4325" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.23" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="5.2.2" />
+    <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- wwwroot es la salida de "ng build": la agrega el target PublishWeb, no se versiona. -->
+    <Content Remove="wwwroot\**" />
+    <None Remove="wwwroot\**" />
+  </ItemGroup>
+
+  <!-- dotnet publish compila el Angular (src/YoutubeMeta.Web) en wwwroot y lo incluye: un solo sitio de IIS. -->
+  <Target Name="PublishWeb" AfterTargets="ComputeFilesToPublish" Condition="'$(SkipWebBuild)' != 'true'">
+    <Exec WorkingDirectory="$(WebRoot)" Command="npm ci --no-audit --no-fund" />
+    <Exec WorkingDirectory="$(WebRoot)" Command="npm run build" />
+    <ItemGroup>
+      <WebDist Include="wwwroot\**" />
+      <ResolvedFileToPublish Include="@(WebDist->'%(FullPath)')">
+        <RelativePath>wwwroot\%(RecursiveDir)%(FileName)%(Extension)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+
+</Project>

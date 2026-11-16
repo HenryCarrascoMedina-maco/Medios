@@ -1,0 +1,126 @@
+<a routerLink="/library" class="mb-3 inline-flex items-center gap-1 text-sm no-underline"><ym-icon name="arrowLeft" [size]="14" /> Volver a Medios</a>
+
+<ym-async-state [loader]="video">
+  @if (video.value(); as v) {
+    <div class="grid gap-4 xl:grid-cols-[1.15fr_1fr]">
+      <section class="card p-4">
+        @if (kind() === 'VIDEO') { <ym-video-player [videoId]="v.id" /> }
+        @else { <ym-media-thumb class="rounded-lg" [media]="v" [showKind]="true" /> }
+
+        <div class="mt-3 flex items-start gap-2">
+          @if (editingTitle()) {
+            <input class="input flex-1" [value]="titleDraft()" (input)="titleDraft.set($any($event.target).value)" maxlength="200" aria-label="Título del video" autofocus
+                   (keydown.enter)="saveTitle()" (keydown.escape)="editingTitle.set(false)" />
+            <button type="button" class="btn btn-primary btn-sm" (click)="saveTitle()">Guardar</button>
+            <button type="button" class="btn btn-ghost btn-sm" (click)="editingTitle.set(false)">Cancelar</button>
+          } @else {
+            <h1 class="flex-1 text-lg font-semibold">{{ v.title }}</h1>
+            <button type="button" class="btn btn-ghost btn-sm btn-icon" title="Renombrar" aria-label="Renombrar el video" (click)="startEditTitle()"><ym-icon name="edit" /></button>
+            <button type="button" class="btn btn-ghost btn-sm btn-icon btn-danger" title="Eliminar" aria-label="Eliminar el video" (click)="deleteVideo()"><ym-icon name="trash" /></button>
+          }
+        </div>
+
+        <dl class="mt-3 grid grid-cols-[130px_1fr] gap-x-3 gap-y-1.5 text-sm">
+          <dt class="muted">Archivo</dt><dd class="break-all">{{ v.originalFileName }}</dd>
+          <dt class="muted">Tamaño</dt><dd>{{ formatBytes(v.sizeBytes) }}</dd>
+          @if (kind() === 'VIDEO') { <dt class="muted">Duración</dt><dd>{{ formatDuration(v.durationSec) }}</dd> }
+          <dt class="muted">Resolución</dt>
+          <dd class="flex flex-wrap items-center gap-2">
+            {{ v.width ? v.width + '×' + v.height : 'Desconocida' }}
+            @if (short()) { <ym-chip tone="danger">se publicará como Short</ym-chip> }
+            @if ((v.durationSec ?? 0) > longLimit) { <ym-chip tone="warning">más de 15 min: canal verificado</ym-chip> }
+          </dd>
+          <dt class="muted">Formato</dt><dd>{{ v.contentType }}</dd>
+          <dt class="muted">Subido</dt><dd>{{ v.createdAt | date: 'dd/MM/yyyy HH:mm' }} por {{ v.createdBy }}</dd>
+          <dt class="muted pt-1.5">Etiquetas</dt>
+          <dd><ym-tag-editor [tags]="v.tags ?? []" [suggestions]="tagStore.tags()" (tagsChange)="saveTags($event)" /></dd>
+          @if (kind() === 'VIDEO') {
+          <dt class="muted pt-1">Miniatura</dt>
+          <dd class="flex flex-wrap gap-1.5">
+            <button type="button" class="btn btn-sm" [disabled]="posterBusy()" (click)="useCurrentFrame()"><ym-icon name="camera" [size]="13" /> Usar fotograma actual</button>
+            <label class="btn btn-sm cursor-pointer" [class.opacity-50]="posterBusy()">
+              <ym-icon name="image" [size]="13" /> Subir JPEG
+              <input type="file" accept="image/jpeg" class="sr-only" [disabled]="posterBusy()" (change)="onPosterFile($event)" />
+            </label>
+            @if (posterBusy()) { <span class="text-xs muted" role="status">Guardando…</span> }
+          </dd>
+          }
+        </dl>
+      </section>
+
+      <section class="card p-4">
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <h2 class="flex-1 font-semibold">Publicaciones</h2>
+          <button type="button" class="btn btn-primary btn-sm" (click)="openPublish()"><ym-icon name="broadcast" [size]="14" /> Publicar en varias cuentas</button>
+        </div>
+
+        <ym-async-state [loader]="data" [isEmpty]="panels().length === 0">
+          <span empty>No hay cuentas conectadas. <a routerLink="/connections">Conecta una cuenta en Conexiones</a>.</span>
+
+          @for (panel of panels(); track panel.connectionId) {
+            @let m = meta[panel.platform];
+            <div class="mb-3 rounded-xl border border-line p-3.5" [class.opacity-75]="panel.removed">
+              <div class="mb-2 flex items-center gap-2.5">
+                <ym-account-avatar [platform]="panel.platform" [name]="panel.name" [url]="panel.avatarUrl" [size]="30" />
+                <div class="min-w-0 flex-1">
+                  <b class="block truncate text-sm">{{ panel.name }}</b>
+                  <span class="text-[11px] muted">{{ m.label }}@if (panel.removed) { · cuenta quitada } @else if (!panel.connected) { · necesita reconectarse }</span>
+                </div>
+                <ym-status-chip [status]="panel.publication?.statusCode ?? null" [percent]="panel.publication?.percent ?? null" />
+              </div>
+
+              @if (panel.publication; as p) {
+                <ym-publication-progress [publication]="p" [detailed]="true" />
+                <p class="mt-1 text-xs muted">
+                  «{{ p.title }}»
+                  @if (p.target === 'YOUTUBE' || p.target === 'TIKTOK') { · {{ privacyLabel[p.privacyStatus] }} }
+                  @if (p.publishAt) { · programado {{ p.publishAt | date: 'dd/MM/yyyy HH:mm' }} }
+                </p>
+                @if (p.externalUrl) {
+                  <p class="mt-1 flex items-center gap-1.5 break-all text-sm"><ym-icon name="link" [size]="13" class="muted" /> <a [href]="p.externalUrl" target="_blank" rel="noopener">{{ p.externalUrl }}</a></p>
+                }
+                <ym-publication-notes [publication]="p" [boxed]="true" />
+                <ym-publication-metrics [publication]="p" />
+                @if (panel.events.length) {
+                  <ul class="mt-3 border-l-2 border-line pl-3 text-xs muted" aria-label="Historial">
+                    @for (e of panel.events; track e.id; let last = $last) {
+                      <li class="relative mb-1 before:absolute before:-left-[17px] before:top-1.5 before:h-2 before:w-2 before:rounded-full"
+                          [class]="last ? 'before:bg-green-500' : 'before:bg-slate-300 dark:before:bg-slate-600'">
+                        {{ e.createdAt | date: 'dd/MM HH:mm' }} · {{ e.message }}
+                      </li>
+                    }
+                  </ul>
+                }
+              } @else {
+                <p class="text-sm muted">Todavía no se ha publicado aquí.</p>
+              }
+
+              <div class="mt-3 flex flex-wrap gap-2">
+                @if (panel.canPublish) {
+                  <button type="button" class="btn btn-sm" [class]="m.btn" (click)="openPublish([panel.connectionId])">
+                    {{ panel.publication?.statusCode === 'DONE' ? 'Publicar otra vez' : 'Publicar aquí' }}
+                  </button>
+                }
+                @if (panel.canRetry && panel.publication) {
+                  <button type="button" class="btn btn-sm" (click)="retry(panel.publication)"><ym-icon name="retry" [size]="13" /> Reintentar ahora</button>
+                }
+                @if (panel.publication) { <ym-publication-resolve [publication]="panel.publication" (changed)="data.reload()" /> }
+                @if (panel.canCancel && panel.publication) {
+                  <button type="button" class="btn btn-ghost btn-sm" (click)="cancel(panel.publication)">Cancelar</button>
+                }
+                @if (!panel.connected && !panel.removed) {
+                  <a routerLink="/connections" class="btn btn-ghost btn-sm no-underline">Reconectar</a>
+                }
+              </div>
+            </div>
+          }
+        </ym-async-state>
+        <p class="text-xs muted">El estado se actualiza en vivo.</p>
+      </section>
+    </div>
+
+    @if (dialog(); as preselected) {
+      <ym-publish-dialog [videos]="dialogVideos()" [accounts]="accounts()" [preselected]="preselected" (closed)="dialog.set(null)" (published)="onPublished()" />
+    }
+  }
+</ym-async-state>

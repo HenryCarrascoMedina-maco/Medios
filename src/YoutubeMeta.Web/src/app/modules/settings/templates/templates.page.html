@@ -1,0 +1,90 @@
+<ym-settings-tabs />
+<div class="mb-4">
+  <h1 class="text-xl font-bold">Ajustes › Plantillas</h1>
+  <p class="max-w-3xl text-sm muted">
+    Textos que se reutilizan, con etiquetas que se rellenan solas (<code>&#123;titulo&#125;</code>, <code>&#123;nombre&#125;</code>…) o que se preguntan al usarlas,
+    y archivos de la biblioteca. Las de <b>publicación</b> se eligen en Publicar; las <b>respuestas</b>, escribiendo <code>/atajo</code> en la
+    <a routerLink="/inbox">Bandeja</a>. La firma de cada cuenta se edita en Conexiones.
+  </p>
+</div>
+
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  <ym-filter-chips ariaLabel="Ver" [options]="views()" [value]="view()" (valueChange)="setView($event)" />
+  <span class="flex-1"></span>
+  @if (view() !== 'BLOCKS') {
+    <label class="relative w-full sm:w-60">
+      <span class="sr-only">Buscar plantilla</span>
+      <ym-icon name="search" [size]="14" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 muted" />
+      <input type="search" class="input pl-8" placeholder="Buscar plantilla…" [value]="search()" (input)="search.set($any($event.target).value)" />
+    </label>
+    <a class="btn btn-primary" routerLink="/settings/templates/new" [queryParams]="{ uso: view() === 'REPLY' ? 'REPLY' : null }">
+      <ym-icon name="plus" [size]="14" /> Nueva plantilla
+    </a>
+  }
+</div>
+
+@if (view() === 'BLOCKS') {
+  <ym-blocks-section />
+} @else {
+  <ym-async-state [loader]="data" [isEmpty]="visible().length === 0"
+                  [emptyText]="search() ? 'Ninguna plantilla coincide con la búsqueda.' : 'Todavía no hay plantillas. Crea la primera con «Nueva plantilla».'">
+    <ul class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      @for (t of visible(); track t.id) {
+        @let lost = missingCount(t);
+        <li class="card flex flex-col gap-2 p-3">
+          <div class="flex items-start gap-2">
+            <a class="min-w-0 flex-1 text-inherit no-underline hover:underline" [routerLink]="['/settings/templates', t.id]">
+              <b class="flex items-center gap-1 truncate text-sm">
+                @if (t.isDefault) { <ym-icon name="star" [size]="12" class="text-amber-500" label="Por defecto" /> }
+                {{ t.name }}
+              </b>
+              @if (t.shortcut) { <code class="text-xs muted">/{{ t.shortcut }}</code> }
+            </a>
+            <ym-chip [tone]="t.usage === 'REPLY' ? 'brand' : 'violet'">{{ t.usage === 'REPLY' ? 'Respuesta' : 'Publicación' }}</ym-chip>
+          </div>
+
+          @if (t.title && t.usage === 'PUBLISH') { <ym-template-text class="truncate text-xs font-semibold" [text]="t.title" /> }
+          <ym-template-text class="line-clamp-3 text-xs muted" [text]="t.body || '—'" [usage]="t.usage" [blocks]="store.blockNames()" />
+
+          @if (t.media.length) {
+            <div class="flex gap-1">
+              @for (m of t.media.slice(0, thumbs); track m.position) {
+                @if (m.missing) {
+                  <span class="grid h-11 w-11 place-items-center rounded-md border border-dashed border-red-400 bg-red-50 text-red-500 dark:bg-red-500/10" [title]="m.title + ' ya no está en la biblioteca'">
+                    <ym-icon name="warning" [size]="14" />
+                  </span>
+                } @else {
+                  <ym-media-thumb class="w-11 overflow-hidden rounded-md" [media]="toVideo(m)" [compact]="true" />
+                }
+              }
+              @if (t.media.length > thumbs) { <span class="grid h-11 w-11 place-items-center rounded-md bg-field text-xs muted">+{{ t.media.length - thumbs }}</span> }
+            </div>
+          }
+          @if (lost) {
+            <p class="text-[11px] text-red-600 dark:text-red-400">{{ lost === 1 ? '1 archivo ya no está' : lost + ' archivos ya no están' }} en la biblioteca: al usarla se omite.</p>
+          }
+
+          <div class="mt-auto flex flex-wrap items-center gap-1.5 border-t border-line pt-2 text-[11px] muted">
+            @for (p of t.platforms; track p) { <ym-platform-badge [platform]="p" [showLabel]="false" [size]="13" /> } @empty { <span>Todas las redes</span> }
+            <span class="flex-1"></span>
+            <span>{{ t.useCount ? 'Usada ' + t.useCount + (t.useCount === 1 ? ' vez' : ' veces') : 'Sin usar' }}</span>
+          </div>
+          <div class="-mx-1 flex flex-wrap gap-1">
+            <a class="btn btn-ghost btn-sm" [routerLink]="['/settings/templates', t.id]"><ym-icon name="edit" [size]="13" /> Editar</a>
+            @if (t.usage === 'PUBLISH') {
+              <button type="button" class="btn btn-ghost btn-sm" [disabled]="publish.opening()" (click)="openPublish(t)"><ym-icon name="send" [size]="13" /> Publicar</button>
+              @if (!t.isDefault) { <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy() === t.id" (click)="makeDefault(t)"><ym-icon name="star" [size]="13" /> Por defecto</button> }
+            }
+            <button type="button" class="btn btn-ghost btn-sm" [disabled]="busy() === t.id" (click)="duplicate(t)"><ym-icon name="checkSquare" [size]="13" /> Duplicar</button>
+            <button type="button" class="btn btn-ghost btn-sm btn-danger ml-auto" [disabled]="busy() === t.id" [attr.aria-label]="'Borrar ' + t.name" (click)="remove(t)"><ym-icon name="trash" [size]="13" /></button>
+          </div>
+        </li>
+      }
+    </ul>
+  </ym-async-state>
+}
+
+@if (publish.request(); as r) {
+  <ym-publish-dialog [videos]="r.videos" [asPost]="r.asPost" [accounts]="r.accounts" [schedule]="r.schedule" [template]="r.template"
+                     (closed)="publish.close()" (published)="publish.close()" />
+}

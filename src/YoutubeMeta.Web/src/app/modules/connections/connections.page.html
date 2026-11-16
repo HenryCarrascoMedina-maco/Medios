@@ -1,0 +1,150 @@
+<div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <h1 class="text-xl font-bold">Conexiones</h1>
+    <p class="text-sm muted">Cuentas donde se publica y desde las que llegan mensajes a la <a routerLink="/inbox">Bandeja</a>. Puedes conectar varias por plataforma; <ym-icon name="star" [size]="12" class="text-amber-500" label="estrella" /> = la que viene marcada al publicar.</p>
+  </div>
+  <a routerLink="/settings" class="btn btn-sm no-underline"><ym-icon name="key" [size]="13" /> Claves de las plataformas</a>
+</div>
+
+<ym-async-state [loader]="data">
+  @if (data.value(); as d) {
+    @let s = d.status;
+    @let u = d.usage;
+    <div class="grid gap-4 xl:grid-cols-2">
+      @for (platform of platforms(); track platform) {
+        @let m = meta[platform];
+        @let list = accountsByPlatform()[platform];
+        @let setup = needsSetup(platform);
+        <section class="card flex flex-col p-4" [attr.aria-labelledby]="'conn-' + platform">
+          <div class="mb-3 flex flex-wrap items-center gap-2">
+            <h2 class="font-semibold" [id]="'conn-' + platform"><ym-platform-badge [platform]="platform" [size]="18" /></h2>
+            @if (list.length) { <ym-chip>{{ list.length }} {{ list.length === 1 ? m.noun : m.nounPlural }}</ym-chip> }
+            <div class="flex-1"></div>
+            @if (platform === 'TEAMS') {
+              <button type="button" class="btn btn-sm" [class]="m.btn" [disabled]="!s.teamsConfigured || busy() !== null" (click)="connectTeams()">
+                <ym-icon name="plus" [size]="13" /> Conectar Teams
+              </button>
+              <button type="button" class="btn btn-sm" [disabled]="busy() !== null" (click)="teamsWebhook.set('')">
+                <ym-icon name="link" [size]="13" /> Añadir canal por webhook
+              </button>
+            } @else if (platform === 'LINKEDIN') {
+              <button type="button" class="btn btn-sm" [class]="m.btn" [disabled]="!s.linkedinConfigured || busy() !== null" (click)="connectLinkedin('Linkedin')">
+                <ym-icon name="plus" [size]="13" /> Conectar perfil
+              </button>
+              <button type="button" class="btn btn-sm" [disabled]="!s.linkedinOrgConfigured || busy() !== null" (click)="connectLinkedin('LinkedinOrg')">
+                <ym-icon name="plus" [size]="13" /> Conectar página de empresa
+              </button>
+            } @else {
+              <button type="button" class="btn btn-sm" [class]="m.btn" [disabled]="!!setup || busy() !== null" (click)="add(platform)">
+                <ym-icon name="plus" [size]="13" /> Añadir {{ m.noun === 'Página' ? 'Páginas' : m.noun }}
+              </button>
+            }
+          </div>
+
+          @if (setup) {
+            <div class="notice notice-warn mb-3">
+              {{ setup }} Guárdalo en <a routerLink="/settings">Ajustes › Plataformas</a>
+              · <a [routerLink]="['/guides', m.guide]">ver la guía</a>.
+            </div>
+          }
+          @if (platform === 'INSTAGRAM' && !list.length) {
+            <p class="mb-3 text-xs muted">Usa el mismo token del usuario del sistema de Meta que Facebook (con los permisos de Instagram).</p>
+          }
+          @if (platform === 'LINKEDIN') {
+            <div class="mb-3 grid gap-1 text-xs muted">
+              <p><b>Perfil personal</b>: publica en tu perfil. Se puede usar sin esperar a LinkedIn@if (!s.linkedinConfigured) { · falta su app en <a routerLink="/settings">Ajustes › Plataformas</a> }.</p>
+              <p><b>Página de empresa</b>: necesita una app aparte que LinkedIn debe aprobar (Community Management API) y que tu usuario administre la página. Se conectan todas las páginas que administras; quita las que no quieras@if (!s.linkedinOrgConfigured) { · falta su app en <a routerLink="/settings">Ajustes › Plataformas</a> }. <a [routerLink]="['/guides', m.guide]" [queryParams]="{ step: 'empresa-app' }">Ver la guía</a>.</p>
+              <p>LinkedIn no deja renovar el acceso solo: hay que reconectar cada 60 días (avisamos 10 días antes).</p>
+            </div>
+          }
+          @if (platform === 'TEAMS') {
+            <div class="mb-3 grid gap-1 text-xs muted">
+              <p><b>Conectar Teams</b> (recomendado): inicias sesión con tu cuenta de trabajo o escuela y eliges los canales. Publica texto, imágenes, video y PDF con tu nombre@if (!s.teamsConfigured) { · falta la app de Microsoft Entra en <a routerLink="/settings">Ajustes › Plataformas</a> }.</p>
+              <p><b>Por webhook</b>: si tu organización no deja registrar apps. Solo texto, enlaces e imágenes; lo firma «Workflows». No lee respuestas.</p>
+              <label class="mt-1 flex items-start gap-2">
+                <input type="checkbox" [checked]="teamsInbox()" (change)="teamsInbox.set(!teamsInbox())" />
+                <span><b>Leer también las respuestas</b> (Bandeja): pide el permiso ChannelMessage.Read.All, que debe aprobar un administrador de tu organización. Aplícalo al conectar o reconectar.</span>
+              </label>
+              <p>¿Ves «Se necesita aprobación del administrador»? <a [routerLink]="['/guides', m.guide]" [queryParams]="{ step: 'ti' }">La guía dice qué enviar a TI</a>; mientras tanto usa el webhook.</p>
+            </div>
+          }
+          @if (platform === 'TIKTOK' && s.tiktokConfigured) {
+            <p class="mb-3 text-xs muted">Sin la auditoría de TikTok, los videos solo se publican como «Solo yo» (o como borrador en la app).</p>
+          }
+          @if (platform === 'WHATSAPP') {
+            <p class="mb-3 text-xs muted">Solo <b>bandeja</b>: WhatsApp no permite publicar en Estados ni Canales, pero sí chatear con tus clientes (WhatsApp Business Cloud API). Usa el mismo token del usuario del sistema de Meta, con los permisos de WhatsApp.</p>
+          }
+
+          @for (a of list; track a.id) {
+            <ym-connection-card [account]="a" [busy]="busy()" [reconnectBlocked]="reconnectBlocked(a)"
+                                (test)="test(a)" (makeDefault)="setDefault(a)" (aliasChange)="saveAlias(a, $event)" (signatureChange)="saveSignature(a, $event)" (reconnect)="add(platform, a)" (disconnect)="disconnect(a)" />
+          } @empty {
+            <p class="mb-2 text-sm muted">{{ emptyText(platform) }}</p>
+          }
+
+          @if (platform === 'YOUTUBE') {
+            <div class="mt-2 grid gap-3">
+              <ym-progress label="Subidas hoy · todo el proyecto (videos.insert)" [valueText]="u.uploads + ' / ' + u.uploadsLimit" [value]="uploadsPercent()" />
+              <ym-progress label="Unidades hoy (consultas)" [valueText]="u.units + ' / ' + u.unitsLimit" [value]="unitsPercent()" />
+              @if (u.channels.length) {
+                <ul class="space-y-0.5 text-xs muted">
+                  @for (c of u.channels; track c.connectionId) {
+                    <li class="flex justify-between gap-2"><span class="truncate">{{ c.displayName }}</span><span>{{ c.uploads }} subidas · {{ c.units }} unidades</span></li>
+                  }
+                </ul>
+              }
+              <p class="text-xs muted">La cuota es del proyecto de Google y la comparten todos los canales. Se reinicia a medianoche del Pacífico ({{ u.resetsAtUtc | date: 'dd/MM HH:mm' }} hora local).</p>
+            </div>
+          }
+
+          <div class="mt-auto">
+            <ym-quick-guide [platform]="m.guide" [open]="!!guideOpen()[platform]" (openChange)="setGuideOpen(platform, $event)" />
+          </div>
+        </section>
+      }
+
+      <section class="card p-4">
+        <h2 class="mb-2 flex items-center gap-2 font-semibold"><ym-icon name="database" [size]="16" class="muted" /> Almacenamiento</h2>
+        <div class="mb-1 flex flex-wrap justify-between gap-2 text-xs">
+          <code class="break-all">{{ u.storageRoot }}</code>
+          <b>{{ formatBytes(u.storageUsedBytes) }} en videos · {{ formatBytes(u.storageFreeBytes) }} libres</b>
+        </div>
+        <ym-progress [value]="storagePercent()" ariaLabel="Espacio usado" />
+        <p class="mt-2 text-xs muted">Las subidas sin terminar se borran tras 24 h sin actividad.</p>
+      </section>
+
+      @if (s.history.length) {
+        <section class="card p-4 xl:col-span-2">
+          <h2 class="mb-2 font-semibold">Cuentas quitadas</h2>
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[620px] text-sm">
+              <tbody>
+                @for (h of s.history; track h.id) {
+                  <tr class="border-b border-line-soft last:border-0">
+                    <td class="py-2 pr-3 font-semibold"><ym-platform-badge [platform]="h.platform" [size]="14" /></td>
+                    <td class="py-2 pr-3">{{ h.alias ?? h.displayName }} <span class="text-xs muted">{{ h.accountHint ?? h.externalId }}</span></td>
+                    <td class="py-2 pr-3 text-xs muted">{{ h.connectedAt | date: 'dd/MM/yyyy' }} → {{ h.revokedAt | date: 'dd/MM/yyyy' }}</td>
+                    <td class="py-2 text-xs muted">{{ h.statusMessage }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </section>
+      }
+    </div>
+  }
+</ym-async-state>
+
+@if (metaWizard(); as platform) {
+  <ym-meta-wizard [platform]="platform" (closed)="metaWizard.set(null)" (connected)="data.reload()" />
+}
+@if (teamsPick(); as pick) {
+  <ym-teams-channels [pick]="pick" (closed)="teamsPick.set(null)" (connected)="data.reload()" />
+}
+@if (teamsWebhook() !== undefined) {
+  <ym-teams-webhook [initialName]="teamsWebhook() ?? ''" (closed)="teamsWebhook.set(undefined)" (connected)="data.reload()" />
+}
+@if (telegramWizard() !== undefined) {
+  <ym-telegram-wizard [account]="telegramWizard() ?? null" (closed)="telegramWizard.set(undefined)" (connected)="data.reload()" />
+}

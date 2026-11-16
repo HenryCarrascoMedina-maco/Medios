@@ -1,0 +1,104 @@
+<div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <h1 class="text-xl font-bold">{{ greeting() }}</h1>
+    <p class="text-sm muted">Lo que necesita atención hoy: mensajes sin responder, publicaciones de hoy y el estado del sistema.</p>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <a routerLink="/library" class="btn btn-sm no-underline"><ym-icon name="upload" [size]="13" /> Subir medio</a>
+    <button type="button" class="btn btn-primary btn-sm" [disabled]="publish.opening()" (click)="newPublication()"><ym-icon name="plus" [size]="13" /> Nueva publicación</button>
+  </div>
+</div>
+
+<ym-async-state [loader]="summary">
+  @if (summary.value(); as s) {
+    @let k = s.kpis;
+    <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      <a routerLink="/inbox" [queryParams]="{ awaiting: true }" class="text-inherit no-underline">
+        <ym-kpi-tile label="Sin responder" icon="inbox" [value]="k.awaiting" [tone]="k.awaiting ? 'text-red-600 dark:text-red-400' : ''"
+                     [hint]="k.windowsClosing ? k.windowsClosing + ' cierran su ventana en menos de 6 h' : 'conversaciones esperando'" />
+      </a>
+      <ym-kpi-tile label="Respuesta media (7 días)" icon="clock" [value]="formatMinutes(k.avgResponseMinutes)"
+                   [hint]="responseDelta() == null ? 'sin datos de la semana anterior' : responseDelta()! <= 0 ? (-responseDelta()! + ' min más rápido') : (responseDelta() + ' min más lento')" />
+      <a routerLink="/calendar" class="text-inherit no-underline">
+        <ym-kpi-tile label="Publicadas hoy" icon="broadcast" [value]="k.publishedToday" [hint]="k.scheduledToday + ' programadas para hoy'" />
+      </a>
+      <a routerLink="/publications" class="text-inherit no-underline">
+        <ym-kpi-tile label="Con problemas (7 días)" icon="warning" [value]="k.failedRecent" [tone]="k.failedRecent ? 'text-red-600 dark:text-red-400' : ''"
+                     hint="fallidas o por revisar" />
+      </a>
+      <a routerLink="/connections" class="text-inherit no-underline">
+        <ym-kpi-tile label="Cuentas conectadas" icon="link" [value]="k.connections" [tone]="k.connectionsAttention ? 'text-amber-600 dark:text-amber-400' : ''"
+                     [hint]="k.connectionsAttention ? k.connectionsAttention + ' necesitan atención' : 'todas en orden'" />
+      </a>
+    </div>
+
+    <div class="grid gap-4 xl:grid-cols-[1.25fr_1fr]">
+      <section class="card p-4" aria-labelledby="home-urgent">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <h2 id="home-urgent" class="font-semibold">Bandeja: lo urgente</h2>
+          <a routerLink="/inbox" class="text-sm">Ver todo →</a>
+        </div>
+        @for (c of s.urgent; track c.id) {
+          @let w = window(c);
+          <a [routerLink]="['/inbox', c.id]" class="flex items-center gap-3 border-b border-line-soft py-2 text-inherit no-underline last:border-0 hover:bg-surface-hover">
+            <ym-account-avatar [platform]="c.platform" [name]="name(c)" [url]="c.contactAvatarUrl" [size]="32" />
+            <span class="min-w-0 flex-1">
+              <b class="block truncate text-sm">{{ name(c) }} @if (c.kind !== 'DIRECT') { <ym-chip tone="outline">Comentarios</ym-chip> }</b>
+              <span class="block truncate text-xs muted">{{ c.lastMessagePreview }}</span>
+            </span>
+            @if (w && !w.closed) { <ym-chip [tone]="w.tone">{{ w.label }}</ym-chip> }
+            @else { <span class="shrink-0 text-xs muted">{{ formatAgo(c.awaitingSince) }}</span> }
+          </a>
+        } @empty {
+          <p class="py-6 text-center text-sm muted">Nada pendiente. Los mensajes nuevos aparecerán aquí.</p>
+        }
+      </section>
+
+      <section class="card p-4" aria-labelledby="home-agenda">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <h2 id="home-agenda" class="font-semibold">Próximas publicaciones</h2>
+          <a routerLink="/calendar" class="text-sm">Calendario →</a>
+        </div>
+        @for (a of s.agenda; track a.id) {
+          <a [routerLink]="a.videoId != null ? ['/videos', a.videoId] : ['/publications']"
+             class="flex items-center gap-2 border-b border-line-soft py-2 text-sm text-inherit no-underline last:border-0 hover:bg-surface-hover">
+            <ym-platform-badge [platform]="a.target" [showLabel]="false" />
+            <span class="min-w-0 flex-1 truncate">{{ a.title }} <span class="text-xs muted">· {{ a.connectionName }}</span></span>
+            @if (a.isProblem) { <ym-chip [tone]="statusMeta[a.statusCode].tone">{{ statusMeta[a.statusCode].label }}</ym-chip> }
+            @else { <span class="shrink-0 text-xs muted">{{ a.at | date: 'EEE d, HH:mm' }}</span> }
+          </a>
+        } @empty {
+          <p class="py-6 text-center text-sm muted">No hay publicaciones programadas.</p>
+        }
+      </section>
+
+      <section class="card p-4" aria-labelledby="home-activity">
+        <h2 id="home-activity" class="mb-2 font-semibold">Actividad de 7 días</h2>
+        <ym-bar-chart title="Mensajes recibidos y publicaciones por día" [series]="chartSeries" [data]="chartData()" />
+      </section>
+
+      <section class="card p-4" aria-labelledby="home-health">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <h2 id="home-health" class="font-semibold">Salud</h2>
+          <a routerLink="/insights" class="text-sm">Detalle →</a>
+        </div>
+        @if (healthService.health(); as h) {
+          <ym-chip [tone]="healthMeta[h.status].tone">{{ healthMeta[h.status].label }}</ym-chip>
+          <ul class="mt-2 space-y-1 text-sm">
+            @for (alert of h.alerts; track alert) {
+              <li class="flex gap-2"><ym-icon name="warning" [size]="14" class="mt-0.5 text-amber-500" /> {{ alert }}</li>
+            } @empty {
+              <li class="muted">Cola, cuentas, bandeja y almacenamiento sin problemas.</li>
+            }
+          </ul>
+        } @else {
+          <p class="text-sm muted">Comprobando…</p>
+        }
+      </section>
+    </div>
+  }
+</ym-async-state>
+
+@if (publish.request(); as r) {
+  <ym-publish-dialog [videos]="r.videos" [asPost]="r.asPost" [accounts]="r.accounts" [schedule]="r.schedule" (closed)="publish.close()" (published)="publish.close()" />
+}

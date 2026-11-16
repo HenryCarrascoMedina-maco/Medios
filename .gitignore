@@ -1,0 +1,26 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Angular
+node_modules/
+.angular/
+src/YoutubeMeta.Web/dist/
+
+# Salida de "ng build" (la genera dotnet publish)
+src/YoutubeMeta.Api/wwwroot/
+
+# Videos, miniaturas y subidas en curso
+storage/
+
+# Configuración local con secretos (usar dotnet user-secrets)
+appsettings.*.local.json
+*.pubxml.user
+backups/
+
+# Planes y mockups de diseño (no se publican)
+plan-*.html
+mockup-*.html

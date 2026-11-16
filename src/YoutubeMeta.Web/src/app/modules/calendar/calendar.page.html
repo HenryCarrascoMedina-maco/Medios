@@ -1,0 +1,101 @@
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  <div class="mr-auto">
+    <h1 class="text-xl font-bold">Calendario</h1>
+    <p class="text-sm muted">Arrastra una publicación programada a otro día para moverla, o un medio sin publicar para programarlo. Hora local.</p>
+  </div>
+  <ym-filter-chips ariaLabel="Vista" [options]="viewOptions" [value]="view()" (valueChange)="setView($event)" />
+  <div class="flex items-center gap-1">
+    <button type="button" class="btn btn-sm" (click)="move(0)">Hoy</button>
+    <button type="button" class="btn btn-sm btn-icon" aria-label="Anterior" (click)="move(-1)"><ym-icon name="arrowLeft" /></button>
+    <button type="button" class="btn btn-sm btn-icon" aria-label="Siguiente" (click)="move(1)"><ym-icon name="arrowRight" /></button>
+  </div>
+  <h2 class="min-w-[10rem] text-base font-semibold capitalize" aria-live="polite">{{ title() }}</h2>
+</div>
+
+<div class="grid gap-4 lg:grid-cols-[1fr_auto]">
+  <ym-async-state [loader]="items">
+    <div class="overflow-x-auto">
+      <div class="card min-w-[640px] overflow-hidden">
+        <div class="grid grid-cols-7 border-b border-line text-center text-[11px] font-semibold uppercase tracking-wide muted">
+          @for (d of weekdays; track d) { <div class="py-2">{{ d }}</div> }
+        </div>
+        <div class="grid grid-cols-7">
+          @for (cell of cells(); track cell.key) {
+            <div class="flex flex-col gap-1 border-b border-r border-line-soft p-1.5 transition [&:nth-child(7n)]:border-r-0"
+                 [class]="(view() === 'month' ? 'min-h-28 ' : 'min-h-80 ') + (cell.inMonth ? '' : 'bg-field/60 ') + (dropTarget() === cell.key ? 'bg-brand-soft dark:bg-brand/10' : '')"
+                 (dragover)="dragOver($event, cell)" (dragleave)="dropTarget.set(null)" (drop)="drop($event, cell)"
+                 [attr.aria-label]="(cell.date | date: 'EEEE d MMMM') + ', ' + cell.items.length + ' publicaciones'">
+              <span class="self-end text-xs" [class.muted]="!cell.inMonth || cell.past">
+                @if (cell.today) { <b class="grid h-6 w-6 place-items-center rounded-full bg-brand text-white">{{ cell.date.getDate() }}</b> }
+                @else { {{ view() === 'week' ? (cell.date | date: 'EEE d') : cell.date.getDate() }} }
+              </span>
+              @for (item of cell.items; track item.id) {
+                <button type="button" class="flex w-full items-center gap-1 truncate rounded px-1.5 py-0.5 text-left text-[11px] font-medium text-white shadow-sm"
+                        [class]="meta[item.target].bg" [class.opacity-60]="moving() === item.id" [class.cursor-grab]="item.canReschedule"
+                        [attr.draggable]="item.canReschedule" (dragstart)="dragStart($event, { kind: 'publication', id: item.id })" (click)="open(item)"
+                        [title]="(item.when | date: 'HH:mm') + ' · ' + item.title + ' · ' + item.connectionName">
+                  <ym-icon [name]="meta[item.target].icon" [size]="10" />
+                  <ym-icon [name]="kindMeta[item.postKind].icon" [size]="10" class="shrink-0 opacity-80" [label]="kindMeta[item.postKind].label" />
+                  <span class="shrink-0 opacity-90">{{ item.when | date: 'HH:mm' }}</span>
+                  <span class="truncate">{{ item.title }}</span>
+                </button>
+              }
+            </div>
+          }
+        </div>
+      </div>
+    </div>
+  </ym-async-state>
+
+  <aside class="card h-max p-3 lg:sticky lg:top-20" [class.lg:w-64]="sideOpen()">
+    <button type="button" class="flex w-full items-center gap-1 text-left text-sm font-semibold" [attr.aria-expanded]="sideOpen()" (click)="sideOpen.set(!sideOpen())">
+      <ym-icon [name]="sideOpen() ? 'chevronDown' : 'chevronRight'" [size]="14" /> Sin publicar
+      @if (pending.value(); as page) { <span class="ml-auto text-xs muted">{{ page.total }}</span> }
+    </button>
+    @if (sideOpen()) {
+      <ym-async-state class="mt-2" [loader]="pending" [isEmpty]="!pending.value()?.items?.length" emptyText="Todos los medios tienen alguna publicación.">
+        <ul class="grid max-h-[60vh] gap-1 overflow-y-auto">
+          @for (v of pending.value()?.items ?? []; track v.id) {
+            <li class="flex cursor-grab items-center gap-2 rounded-md border border-line px-2 py-1.5 text-xs hover:border-brand" draggable="true"
+                (dragstart)="dragStart($event, { kind: 'video', id: v.id })">
+              <ym-icon [name]="mediaIcon(v)" [size]="13" class="shrink-0 muted" />
+              <span class="min-w-0 flex-1 truncate" [title]="v.title">{{ v.title }}</span>
+              <button type="button" class="btn btn-ghost btn-sm btn-icon" [attr.aria-label]="'Publicar ' + v.title" (click)="publish.open([v])"><ym-icon name="broadcast" [size]="12" /></button>
+            </li>
+          }
+        </ul>
+      </ym-async-state>
+    }
+  </aside>
+</div>
+
+@if (selected(); as item) {
+  <ym-modal [title]="item.title" [width]="420" (closed)="selected.set(null)">
+    <ym-platform-badge modal-icon [platform]="item.target" [showLabel]="false" [size]="18" />
+    <div class="grid gap-2 text-sm">
+      <div class="flex flex-wrap items-center gap-2">
+        <ym-status-chip [status]="item.statusCode" [platform]="item.target" [account]="item.connectionName" />
+      </div>
+      <p><span class="muted">{{ item.publishAt ? 'Programada' : 'Fecha' }}:</span> {{ item.when | date: 'EEEE d MMMM y, HH:mm' }}</p>
+      <p class="flex flex-wrap items-center gap-1.5"><span class="muted">Publicación:</span> <ym-post-kind-badge [kind]="item.postKind" />
+        @if (item.videoId != null) { <a [routerLink]="['/videos', item.videoId]" (click)="selected.set(null)">{{ item.videoTitle }}</a> } @else { <span>{{ item.videoTitle }}</span> }
+      </p>
+      @if (item.externalUrl) {
+        <p class="flex items-center gap-1 break-all"><ym-icon name="external" [size]="13" class="muted" /> <a [href]="item.externalUrl" target="_blank" rel="noopener">{{ item.externalUrl }}</a></p>
+      }
+      @if (item.canReschedule) {
+        <ym-schedule-field label="Reprogramar" hint="la plataforma valida su margen" [required]="true" [(value)]="rescheduleTo" />
+      }
+    </div>
+    <ng-container modal-footer>
+      <button type="button" class="btn" (click)="selected.set(null)">Cerrar</button>
+      @if (item.canReschedule) {
+        <button type="button" class="btn btn-primary" [disabled]="!rescheduleTo() || moving() !== null" (click)="rescheduleSelected()">Guardar fecha</button>
+      }
+    </ng-container>
+  </ym-modal>
+}
+
+@if (publish.request(); as r) {
+  <ym-publish-dialog [videos]="r.videos" [asPost]="r.asPost" [accounts]="r.accounts" [schedule]="r.schedule" (closed)="publish.close()" (published)="onPublished()" />
+}

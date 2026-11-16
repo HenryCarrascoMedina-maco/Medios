@@ -1,0 +1,116 @@
+<div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+  <div>
+    <h1 class="text-xl font-bold">Medios</h1>
+    <p class="text-sm muted">{{ videos.total() }} {{ videos.total() === 1 ? 'medio' : 'medios' }} (videos, imágenes y PDF)@if (filtered()) { con estos filtros · <button type="button" class="underline" (click)="clearFilters()">quitar filtros</button> }</p>
+  </div>
+  <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+    <label class="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
+      <span class="sr-only">Buscar medios</span>
+      <ym-icon name="search" [size]="14" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 muted" />
+      <input type="search" class="input pl-8" placeholder="Buscar por título o archivo…" [value]="search()" (input)="search.set($any($event.target).value)" />
+    </label>
+    <select class="input !w-auto" aria-label="Ordenar" (change)="setFilter(sort, $any($event.target).value)">
+      @for (o of sortOptions; track o.value) { <option [value]="o.value" [selected]="o.value === sort()">{{ o.label }}</option> }
+    </select>
+    <div class="flex rounded-lg border border-line" role="group" aria-label="Vista">
+      <button type="button" class="btn btn-ghost btn-sm btn-icon" [class.bg-surface-muted]="layout() === 'grid'" [attr.aria-pressed]="layout() === 'grid'" aria-label="Cuadrícula" (click)="setLayout('grid')"><ym-icon name="grid" /></button>
+      <button type="button" class="btn btn-ghost btn-sm btn-icon" [class.bg-surface-muted]="layout() === 'list'" [attr.aria-pressed]="layout() === 'list'" aria-label="Lista" (click)="setLayout('list')"><ym-icon name="list" /></button>
+    </div>
+    <button type="button" class="btn btn-sm" [attr.aria-pressed]="selecting()" (click)="toggleSelecting()"><ym-icon name="checkSquare" [size]="14" /> {{ selecting() ? 'Terminar' : 'Seleccionar' }}</button>
+    <button type="button" class="btn btn-primary btn-sm" [disabled]="publish.opening()" (click)="newPost()"><ym-icon name="plus" [size]="14" /> Nueva publicación</button>
+  </div>
+</div>
+
+<div class="mb-4 grid gap-2">
+  <ym-filter-chips ariaLabel="Tipo de medio" [options]="kindOptions" [value]="kind()" (valueChange)="setFilter(kind, $event)" />
+  <ym-filter-chips ariaLabel="Estado" [options]="statusOptions" [value]="status()" (valueChange)="setFilter(status, $event)" />
+  <div class="flex flex-wrap items-start gap-x-4 gap-y-2">
+    <ym-filter-chips ariaLabel="Plataforma" [options]="platformOptions()" [value]="platform()" (valueChange)="setFilter(platform, $event)" />
+    @if (tagStore.tags().length) {
+      <ym-filter-chips class="flex-1" ariaLabel="Etiqueta" [options]="tagOptions()" [value]="tag()" (valueChange)="setFilter(tag, $event)" />
+    }
+  </div>
+</div>
+
+<label class="mb-4 block cursor-pointer rounded-xl border-2 border-dashed px-4 py-5 text-center transition focus-within:ring-2 focus-within:ring-brand/40"
+       [class]="dragging() ? 'border-brand bg-brand-soft dark:bg-brand/10' : 'border-line-strong bg-surface hover:border-brand'"
+       (dragover)="onDragOver($event)" (dragleave)="dragging.set(false)" (drop)="onDrop($event)">
+  <input type="file" class="sr-only" [accept]="accept" multiple (change)="onFiles($event)" />
+  <div class="flex items-center justify-center gap-1.5 text-sm"><ym-icon name="folder" class="muted" /> <b>Arrastra videos, imágenes o PDF aquí</b> o <b class="text-brand">haz clic para elegir</b></div>
+  <div class="mt-1 text-xs muted">Videos (MP4, MOV, WebM…), imágenes JPG o PNG y documentos PDF · se sube por partes y continúa si se corta la conexión</div>
+</label>
+
+@if (uploader.uploads().length) {
+  <div class="mb-5 grid gap-2" aria-label="Subidas en curso">
+    @for (item of uploader.uploads(); track item.key) {
+      <div class="card grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1.5 px-4 py-3">
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5 truncate text-sm font-semibold"><ym-icon name="upload" [size]="14" class="muted" /> {{ item.fileName }}</div>
+          <div class="text-xs" [class]="item.state === 'error' ? 'text-red-500' : 'muted'">
+            {{ formatBytes(item.loaded) }} de {{ formatBytes(item.size) }}
+            @if (speedOf(item)) { · {{ speedOf(item) }} }
+            @if (item.message) { · {{ item.message }} }
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <b class="text-sm">{{ percentOf(item) }}%</b>
+          @switch (item.state) {
+            @case ('uploading') { <button type="button" class="btn btn-sm" (click)="uploader.pause(item.key)"><ym-icon name="pause" [size]="12" /> Pausar</button> }
+            @case ('paused') {
+              @if (!item.awaitingAuth) { <button type="button" class="btn btn-sm" (click)="uploader.resume(item.key)"><ym-icon name="play" [size]="12" /> Reanudar</button> }
+            }
+            @case ('error') {
+              @if (item.canResume) {
+                <button type="button" class="btn btn-sm" (click)="uploader.resume(item.key)"><ym-icon name="retry" [size]="12" /> Reanudar</button>
+              }
+              <button type="button" class="btn btn-ghost btn-sm" (click)="uploader.dismiss(item.key)">Cerrar</button>
+            }
+          }
+          @if (item.state === 'uploading' || item.state === 'paused' || item.state === 'preparing') {
+            <button type="button" class="btn btn-ghost btn-sm btn-icon" title="Cancelar y borrar del servidor" [attr.aria-label]="'Cancelar la subida de ' + item.fileName" (click)="uploader.cancel(item.key)">
+              <ym-icon name="close" />
+            </button>
+          }
+        </div>
+        <ym-progress class="col-span-2" [value]="percentOf(item)" [processing]="item.state === 'finalizing'" [ariaLabel]="'Subida de ' + item.fileName" />
+      </div>
+    }
+  </div>
+}
+
+@if (selected().size) {
+  <ym-bulk-bar [count]="selected().size" (cleared)="clearSelection()">
+    <button type="button" class="btn btn-primary btn-sm" [disabled]="publish.opening()" (click)="createPost()" title="Una sola publicación con los medios marcados, en el orden en que los marcaste"><ym-icon name="plus" [size]="13" /> Crear publicación</button>
+    <button type="button" class="btn btn-sm" [disabled]="publish.opening()" (click)="publishSelected()" title="Una publicación por cada medio marcado"><ym-icon name="broadcast" [size]="13" /> {{ selected().size === 1 ? 'Publicar en varias cuentas' : 'Publicar cada uno por separado' }}</button>
+    <button type="button" class="btn btn-sm" (click)="bulkDialog.set('tags')"><ym-icon name="tag" [size]="13" /> Etiquetar</button>
+    <button type="button" class="btn btn-sm" (click)="bulkDialog.set('series')"><ym-icon name="calendar" [size]="13" /> Programar en serie</button>
+    <button type="button" class="btn btn-sm btn-danger" [disabled]="busy()" (click)="deleteSelected()"><ym-icon name="trash" [size]="13" /> Eliminar</button>
+    @if (selected().size < list().length) { <button type="button" class="btn btn-ghost btn-sm" (click)="selectAllLoaded()">Seleccionar los {{ list().length }} cargados</button> }
+  </ym-bulk-bar>
+} @else if (selecting()) {
+  <p class="mb-3 text-xs muted" role="status">Pulsa los medios para marcarlos (el orden en que los marcas es el de la publicación); con Mayús marcas un tramo.</p>
+}
+
+<ym-async-state [loader]="videos" [isEmpty]="list().length === 0"
+                [emptyText]="filtered() ? 'Ningún medio coincide con estos filtros.' : 'Todavía no hay medios. Sube el primero arrastrándolo arriba.'">
+  <div [class]="layout() === 'grid' ? 'grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-4' : 'grid gap-2'">
+    @for (video of list(); track video.id) {
+      <ym-video-card [video]="video" [layout]="layout()" [selecting]="selecting()" [selected]="selected().has(video.id)" (toggled)="toggle(video, $event)" />
+    }
+  </div>
+  @if (videos.hasMore()) {
+    <div class="py-6 text-center" ymInfiniteScroll (reached)="videos.loadMore()">
+      <button type="button" class="btn btn-sm" [disabled]="videos.status() === 'loading'" (click)="videos.loadMore()">
+        @if (videos.status() === 'loading') { <ym-icon name="spinner" [size]="13" /> Cargando… } @else { Cargar más ({{ list().length }} de {{ videos.total() }}) }
+      </button>
+    </div>
+  }
+</ym-async-state>
+
+@switch (bulkDialog()) {
+  @case ('tags') { <ym-tag-dialog [videos]="selectedVideos()" (closed)="bulkDialog.set(null)" (applied)="onTagsApplied()" /> }
+  @case ('series') { <ym-series-dialog [videos]="selectedVideos()" (closed)="bulkDialog.set(null)" (confirmed)="publishSelected($event)" /> }
+}
+@if (publish.request(); as r) {
+  <ym-publish-dialog [videos]="r.videos" [asPost]="r.asPost" [accounts]="r.accounts" [schedule]="r.schedule" (closed)="publish.close()" (published)="onPublished()" />
+}

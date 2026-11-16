@@ -1,0 +1,237 @@
+<ym-modal [title]="dialogTitle()" [width]="980" [dirty]="dirty() && !saving()" dirtyMessage="Se perderá lo que preparaste para estas cuentas (el borrador queda guardado)." (closed)="closed.emit()">
+  <ym-icon modal-icon name="broadcast" [size]="20" class="text-brand" />
+
+  @if (series()) {
+    <div class="-mt-1 flex flex-wrap gap-1.5 text-xs">
+      @for (v of videos(); track v.id) { <span class="max-w-[14rem] truncate rounded-full bg-surface-muted px-2 py-0.5" [title]="v.title">{{ v.title }}</span> }
+    </div>
+  } @else if (fileInfo()) {
+    <p class="-mt-1 flex items-center gap-1.5 text-xs muted"><ym-icon name="film" [size]="13" /> {{ fileInfo() }}</p>
+  }
+
+  @if (savedDraft(); as saved) {
+    <div class="notice notice-info flex flex-wrap items-center gap-2" role="status">
+      <span class="flex-1">Hay un borrador sin publicar de esta publicación ({{ saved.savedAt | date: 'dd/MM HH:mm' }}).</span>
+      <button type="button" class="btn btn-sm" (click)="restoreDraft()">Restaurar</button>
+      <button type="button" class="btn btn-ghost btn-sm" (click)="discardDraft()">Descartar</button>
+    </div>
+  }
+
+  @let step = single() ? 1 : 0;
+  @if (single()) {
+    <!-- 1. QUÉ SE PUBLICA -->
+    <section class="grid gap-2">
+      <div class="label !mb-0">
+        <span class="flex items-center gap-2">1. ¿Qué publicas?
+          @if (composed().kind; as kind) { <ym-post-kind-badge class="rounded-full bg-surface-muted px-2 py-0.5 font-normal" [kind]="kind" [count]="media().length" /> }
+        </span>
+        <small>{{ media().length ? 'el tipo sale de los medios' : 'sin medios: texto o enlace' }}</small>
+      </div>
+      <ym-media-strip [items]="media()" (itemsChange)="setMedia($event)" (add)="picking.set(true)" />
+      @if (!media().length) {
+        <div>
+          <label class="label" for="pub-link">Enlace <small>opcional · se publica con vista previa de la página</small></label>
+          <input id="pub-link" type="url" class="input" placeholder="https://…" [value]="linkUrl()" (input)="edit(linkUrl, $any($event.target).value)" />
+        </div>
+      }
+      @for (e of postErrors(); track e) { <p class="text-xs text-red-500">{{ e }}</p> }
+    </section>
+  }
+
+  <!-- DESTINOS -->
+  <section>
+    <div class="label">{{ step + 1 }}. ¿Dónde se publica? <ym-req /> <small>{{ chosen().length }} {{ chosen().length === 1 ? 'cuenta' : 'cuentas' }}</small></div>
+    @for (group of groups(); track group.platform) {
+      <fieldset class="mb-2">
+        <legend class="mb-1 text-[11px] font-semibold uppercase tracking-wide muted">{{ meta[group.platform].label }}</legend>
+        <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          @for (a of group.accounts; track a.id) {
+            @let why = blockers()[a.id];
+            @let isOn = selected().has(a.id);
+            <label class="choice !items-center" [class.opacity-70]="a.statusCode !== 'CONNECTED' || (why.length > 0 && !isOn)" [attr.title]="why.length ? why.join(' · ') : null">
+              <input type="checkbox" [checked]="isOn" [disabled]="why.length > 0 && !isOn" (change)="toggle(a.id)" />
+              <ym-account-avatar [platform]="a.platform" [name]="a.alias ?? a.displayName" [url]="a.avatarUrl" [size]="26" />
+              <span class="min-w-0 flex-1">
+                <b class="flex items-center gap-1 truncate text-[13px]">
+                  @if (a.isDefault) { <ym-icon name="star" [size]="12" class="text-amber-500" label="Por defecto" /> }{{ a.alias ?? a.displayName }}
+                </b>
+                @if (why.length) {
+                  <span class="block text-[11px] leading-snug" [class]="isOn ? 'text-red-500' : 'text-amber-600 dark:text-amber-400'"><ym-icon name="warning" [size]="10" /> {{ why[0] }}</span>
+                } @else {
+                  <span class="block truncate text-[11px] muted">{{ a.statusCode === 'CONNECTED' ? (a.accountHint ?? a.externalId) : 'Reconectar: la publicación esperará' }}</span>
+                }
+              </span>
+            </label>
+          }
+        </div>
+      </fieldset>
+    } @empty {
+      <div class="notice notice-warn">No hay cuentas conectadas. <a routerLink="/connections" (click)="closed.emit()">Conecta una en Conexiones</a>.</div>
+    }
+  </section>
+
+  @if (chosen().length) {
+    <!-- 2. TEXTO COMÚN -->
+    <section class="grid gap-3">
+      <div class="flex flex-wrap items-end gap-2">
+        <div class="label !mb-0 flex-1">{{ step + 2 }}. Texto común <small>cada cuenta puede cambiarlo en su pestaña</small></div>
+        <label class="flex items-center gap-1.5 text-xs">
+          <ym-icon name="template" [size]="13" class="muted" />
+          <span class="sr-only">Plantilla</span>
+          <select class="input !w-auto !py-1 text-xs" (change)="chooseTemplate($any($event.target).value)" aria-label="Plantilla">
+            <option value="" [selected]="templateId() === null">Sin plantilla</option>
+            @for (t of store.publishTemplates(); track t.id) { <option [value]="t.id" [selected]="t.id === templateId()">{{ t.name }}{{ t.isDefault ? ' (por defecto)' : '' }}</option> }
+          </select>
+        </label>
+        @if (savingTemplate() === null) {
+          <button type="button" class="btn btn-ghost btn-sm" (click)="savingTemplate.set('')"><ym-icon name="save" [size]="13" /> Guardar como plantilla</button>
+        } @else {
+          <span class="flex items-center gap-1">
+            <input class="input !w-40 !py-1 text-xs" placeholder="Nombre de la plantilla" aria-label="Nombre de la plantilla" autofocus
+                   [value]="savingTemplate()" (input)="savingTemplate.set($any($event.target).value)" (keydown.enter)="saveAsTemplate()" (keydown.escape)="savingTemplate.set(null)" />
+            <button type="button" class="btn btn-primary btn-sm" [disabled]="!savingTemplate()?.trim()" (click)="saveAsTemplate()">Guardar</button>
+            <button type="button" class="btn btn-ghost btn-sm" (click)="savingTemplate.set(null)">Cancelar</button>
+          </span>
+        }
+      </div>
+      <div>
+        <label class="label" for="pub-title">Título @if (titleRequired()) { <ym-req /> }
+          <small>@if (series() || composed().kind === 'VIDEO') { YouTube admite {{ rules().youtubeTitleMax }}; TikTok lo usa como texto del video } @else { opcional · nombra la publicación en la lista }</small>
+        </label>
+        <ym-template-editor inputId="pub-title" ariaLabel="Título" [multiline]="false" [toolbar]="false" [maxlength]="255" [blocks]="store.blockNames()"
+                            [value]="title()" (valueChange)="edit(title, $event)" />
+      </div>
+      <div>
+        <label class="label" for="pub-desc">{{ single() && composed().kind !== 'VIDEO' ? 'Texto' : 'Descripción' }} @if (textRequired()) { <ym-req /> } <small>es el texto del post; en Telegram, si está vacío, se usa el título</small></label>
+        <ym-template-editor inputId="pub-desc" ariaLabel="Texto" [rows]="4" [blocks]="store.blockNames()" [value]="description()" (valueChange)="edit(description, $event)" />
+      </div>
+      @if (fieldNames().length) {
+        <ym-template-fields title="La plantilla necesita estos datos" [names]="fieldNames()" [values]="fieldValues()" (valuesChange)="edit(fieldValues, $event)" />
+      }
+      @if (templateNotice(); as notice) { <p class="notice notice-info text-xs">{{ notice }}</p> }
+      @if (missingBlocks().length) {
+        <p class="text-xs text-amber-600 dark:text-amber-400">No existe {{ missingBlocks().length === 1 ? 'el bloque' : 'los bloques' }}: {{ missingBlocks().join(', ') }}. Créalo en Ajustes › Plantillas o se publicará tal cual.</p>
+      }
+
+      @if (hasAigcQuestion()) {
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <div class="label">¿Contiene contenido realista generado o alterado con IA? <ym-req /> <small>YouTube · TikTok</small></div>
+            <ym-choice-group ariaLabel="¿Contiene contenido generado con IA?" [options]="yesNo" [value]="synthetic()" (valueChange)="edit(synthetic, $event)" />
+          </div>
+          @if (hasYoutube()) {
+            <div>
+              <div class="label">¿Es para niños? <ym-req /> <small>YouTube · COPPA</small></div>
+              <ym-choice-group ariaLabel="¿Es para niños?" [options]="kids" [value]="madeForKids()" (valueChange)="edit(madeForKids, !!$event)" />
+            </div>
+          }
+        </div>
+      }
+    </section>
+
+    <!-- 3. AJUSTES POR CUENTA -->
+    <section>
+      <div class="label" id="pub-tabs-label">{{ step + 3 }}. Ajustes de cada cuenta</div>
+      <div class="flex flex-wrap gap-1 border-b border-line" role="tablist" aria-labelledby="pub-tabs-label">
+        @for (a of chosen(); track a.id; let i = $index) {
+          @let bad = accountErrors()[a.id].length > 0;
+          @let isActive = active()?.id === a.id;
+          <button type="button" role="tab" [id]="'pub-tab-' + a.id" [attr.aria-selected]="isActive" [attr.aria-controls]="'pub-panel-' + a.id"
+                  [tabIndex]="isActive ? 0 : -1" (keydown)="onTabKey($event, i)"
+                  class="-mb-px flex items-center gap-1.5 border-b-2 px-2.5 py-1.5 text-xs"
+                  [class]="isActive ? 'border-brand font-semibold' : 'border-transparent muted hover:text-inherit'"
+                  (click)="activeId.set(a.id)">
+            <ym-platform-badge [platform]="a.platform" [showLabel]="false" [size]="13" />
+            <span class="max-w-[10rem] truncate">{{ a.alias ?? a.displayName }}</span>
+            <ym-icon [name]="bad ? 'dot' : 'check'" [size]="12" [class]="bad ? 'text-red-500' : 'text-green-600'" [label]="bad ? 'con pendientes' : 'lista'" />
+          </button>
+        }
+      </div>
+
+      @if (active(); as a) {
+        @let d = draft(a.id);
+        <div class="grid gap-4 rounded-b-xl border border-t-0 border-line p-3 lg:grid-cols-[1fr_auto]" role="tabpanel" [id]="'pub-panel-' + a.id" [attr.aria-labelledby]="'pub-tab-' + a.id">
+          <div class="grid min-w-0 content-start gap-3">
+            @if (a.statusCode !== 'CONNECTED') {
+              <div class="notice notice-warn">Esta cuenta necesita reconectarse: la publicación quedará en espera y saldrá sola al reconectarla.</div>
+            }
+
+            <details class="text-sm" [open]="d.title !== null || d.description !== null">
+              <summary class="flex cursor-pointer items-center gap-1.5 text-xs font-semibold">
+                <ym-icon name="edit" [size]="13" /> Texto distinto para esta cuenta @if (d.title === null && d.description === null) { <span class="muted">(usa el común)</span> }
+              </summary>
+              <div class="mt-2 grid gap-2">
+                <ym-template-editor [inputId]="'pub-title-' + a.id" ariaLabel="Título para esta cuenta" placeholder="Título" [multiline]="false" [toolbar]="false" [maxlength]="255"
+                                    [blocks]="store.blockNames()" [value]="effectiveTitle(a.id)" (valueChange)="edited(a.id, { title: $event })" />
+                <ym-template-editor [inputId]="'pub-desc-' + a.id" ariaLabel="Descripción para esta cuenta" placeholder="Descripción" [rows]="3" [toolbar]="false"
+                                    [blocks]="store.blockNames()" [value]="effectiveDescription(a.id)" (valueChange)="edited(a.id, { description: $event })" />
+                @if (d.title !== null || d.description !== null) {
+                  <button type="button" class="btn btn-ghost btn-sm w-max" (click)="edited(a.id, { title: null, description: null })"><ym-icon name="retry" [size]="13" /> Volver al texto común</button>
+                }
+              </div>
+            </details>
+            @if (preview(); as p) { <p class="-mt-1 text-[11px] muted">{{ p.counters }}@if (!single()) { · con el primero }</p> }
+
+            @switch (a.platform) {
+              @case ('YOUTUBE') { <ym-youtube-settings [account]="a" [draft]="d" [kind]="activeKind()" [categories]="categories()" [short]="short()" [longVideo]="longVideo()" (patch)="edited(a.id, $event)" /> }
+              @case ('FACEBOOK') { <ym-facebook-settings [account]="a" [draft]="d" [kind]="activeKind()" (patch)="edited(a.id, $event)" /> }
+              @case ('INSTAGRAM') { <ym-instagram-settings [account]="a" [draft]="d" [kind]="activeKind()" (patch)="edited(a.id, $event)" /> }
+              @case ('TELEGRAM') { <ym-telegram-settings [account]="a" [draft]="d" [kind]="activeKind()" (patch)="edited(a.id, $event)" /> }
+              @case ('TIKTOK') { <ym-tiktok-settings [account]="a" [draft]="d" [kind]="activeKind()" [state]="tiktokInfo()[a.id]" (reload)="loadTiktok(a.id)" (patch)="edited(a.id, $event)" /> }
+              @case ('LINKEDIN') { <ym-linkedin-settings [account]="a" [draft]="d" [kind]="activeKind()" (patch)="edited(a.id, $event)" /> }
+              @case ('TEAMS') { <ym-teams-settings [account]="a" [draft]="d" [kind]="activeKind()" (patch)="edited(a.id, $event)" /> }
+            }
+            @if (canComment(a)) {
+              <ym-first-comment-field [inputId]="'fc-' + a.id" [label]="a.platform === 'TEAMS' ? 'Primera respuesta en el hilo' : 'Primer comentario'" [value]="d.firstComment" (valueChange)="edited(a.id, { firstComment: $event })" />
+            }
+
+            @if (seriesDates().length) {
+              <div class="rounded-lg bg-field p-2 text-xs">
+                <b class="mb-1 block">Programación en serie</b>
+                <ol class="grid gap-0.5">
+                  @for (s of seriesDates(); track s.video.id) { <li class="flex justify-between gap-2"><span class="truncate">{{ s.video.title }}</span><span class="shrink-0 muted">{{ s.at | date: 'EEE dd/MM HH:mm' }}</span></li> }
+                </ol>
+              </div>
+            }
+
+            @if (accountErrors()[a.id]; as list) {
+              @if (list.length) { <p class="text-xs text-red-500">Pendiente en esta cuenta: {{ list.join(' · ') }}</p> }
+            }
+          </div>
+
+          @if (preview(); as p) {
+            <ym-publish-preview class="lg:w-72" [account]="p.account" [media]="p.media" [kind]="p.kind" [linkUrl]="linkUrl()" [title]="p.title" [description]="p.description" [privacy]="p.privacy" />
+          }
+        </div>
+      }
+    </section>
+
+    <!-- 4. CONSENTIMIENTO -->
+    <div class="rounded-xl border border-line bg-field p-3">
+      <label class="flex items-start gap-2 text-sm">
+        <input type="checkbox" class="mt-0.5" [checked]="consent()" (change)="edit(consent, $any($event.target).checked)" />
+        <span>Confirmo que quiero publicar @if (single()) { esta publicación } @else { estas {{ videos().length }} publicaciones } en:
+          @for (a of chosen(); track a.id; let last = $last) { <b>{{ name(a) }}</b>{{ last ? '.' : ', ' }} }<ym-req />
+        </span>
+      </label>
+      @if (hasTiktok()) {
+        <p class="hint">Al publicar en TikTok aceptas la <a href="https://www.tiktok.com/legal/page/global/music-usage-confirmation/en" target="_blank" rel="noopener">Confirmación de uso de música de TikTok</a>@if (hasBrandedTiktok()) { y su <a href="https://www.tiktok.com/legal/page/global/bc-policy/en" target="_blank" rel="noopener">Política de contenido de marca</a> }.</p>
+      }
+    </div>
+  }
+
+  <ng-container modal-footer>
+    <span class="min-w-0 flex-1 text-xs text-red-500" aria-live="polite">@if (errors().length) { Pendiente: {{ errors()[0] }}@if (errors().length > 1) { · y {{ errors().length - 1 }} más } }</span>
+    <button type="button" class="btn" (click)="cancel()">Cancelar</button>
+    <button type="button" class="btn btn-primary" [disabled]="errors().length > 0 || saving()" (click)="submit()">
+      @if (saving()) { Encolando… }
+      @else if (!single()) { Publicar {{ videos().length }} por separado }
+      @else if (chosen().length > 1) { Publicar en {{ chosen().length }} cuentas }
+      @else { Publicar }
+    </button>
+  </ng-container>
+</ym-modal>
+
+@if (picking()) {
+  <ym-media-picker [exclude]="excluded()" (picked)="addMedia($event)" (closed)="picking.set(false)" />
+}

@@ -1,0 +1,156 @@
+@let f = form();
+<div class="mb-4 flex flex-wrap items-center gap-2">
+  <a class="btn btn-ghost btn-sm" routerLink="/settings/templates" [queryParams]="{ ver: f.usage }"><ym-icon name="arrowLeft" [size]="13" /> Plantillas</a>
+  <h1 class="min-w-0 truncate text-xl font-bold">{{ id() ? f.name || 'Plantilla' : 'Nueva plantilla' }}</h1>
+  @if (dirty()) { <span class="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">Cambios sin guardar</span> }
+  <span class="flex-1"></span>
+  @if (id()) { <button type="button" class="btn btn-ghost btn-sm btn-danger" (click)="remove()"><ym-icon name="trash" [size]="13" /> Borrar</button> }
+  <a class="btn" routerLink="/settings/templates" [queryParams]="{ ver: f.usage }">Cancelar</a>
+  <button type="button" class="btn btn-primary" [disabled]="errors().length > 0 || saving() || !dirty()" (click)="save()">{{ saving() ? 'Guardando…' : 'Guardar' }}</button>
+</div>
+
+@if (loading()) {
+  <p class="text-sm muted">Cargando…</p>
+} @else {
+  <div class="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
+    <!-- EDICIÓN -->
+    <div class="grid min-w-0 content-start gap-4">
+      <section class="card grid gap-3 p-4">
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label class="label" for="tpl-name">Nombre <ym-req /></label>
+            <input id="tpl-name" class="input" maxlength="100" [value]="f.name" (input)="patch({ name: $any($event.target).value })" />
+          </div>
+          <div>
+            <div class="label">Para</div>
+            <div class="flex flex-wrap gap-2" role="radiogroup" aria-label="Uso de la plantilla">
+              <label class="choice"><input type="radio" name="tpl-usage" [checked]="!isReply()" (change)="setUsage('PUBLISH')" /> Publicar</label>
+              <label class="choice"><input type="radio" name="tpl-usage" [checked]="isReply()" (change)="setUsage('REPLY')" /> Responder en la Bandeja</label>
+            </div>
+          </div>
+        </div>
+        @if (isReply()) {
+          <div class="sm:w-1/2">
+            <label class="label" for="tpl-shortcut">Atajo <ym-req /> <small>en la Bandeja se escribe /{{ f.shortcut || 'atajo' }}</small></label>
+            <div class="relative">
+              <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 muted">/</span>
+              <input id="tpl-shortcut" class="input pl-6 font-mono" maxlength="40" placeholder="precio" [value]="f.shortcut" (input)="patch({ shortcut: $any($event.target).value })" />
+            </div>
+          </div>
+        }
+        <div>
+          <div class="label">Se ofrece en <small>sin marcar = en todas</small></div>
+          <div class="flex flex-wrap gap-1.5" role="group" aria-label="Redes donde se ofrece">
+            @for (p of networks(); track p) {
+              @let on = f.platforms.includes(p);
+              <button type="button" class="inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition" [attr.aria-pressed]="on"
+                      [class]="on ? 'border-brand bg-brand-soft dark:bg-brand/15' : 'border-line bg-surface hover:border-line-strong'" (click)="toggleNetwork(p)">
+                <ym-platform-badge [platform]="p" [size]="13" />
+              </button>
+            }
+          </div>
+        </div>
+      </section>
+
+      <section class="card grid gap-3 p-4">
+        <h2 class="text-xs font-semibold uppercase tracking-wide muted">{{ isReply() ? 'Mensaje' : 'Texto' }}</h2>
+        @if (!isReply()) {
+          <div>
+            <label class="label" for="tpl-title">Título <small>YouTube y nombre de la publicación en las listas</small></label>
+            <ym-template-editor inputId="tpl-title" ariaLabel="Título" [multiline]="false" [toolbar]="false" [maxlength]="255" [blocks]="store.blockNames()"
+                                [value]="f.title" (valueChange)="patch({ title: $event })" />
+          </div>
+        }
+        <div>
+          <label class="label" for="tpl-body">{{ isReply() ? 'Texto de la respuesta' : 'Texto de la publicación' }}
+            <small>escribe <code>&#123;</code> para etiquetas @if (store.blockNames().length) { · <code>#</code> para bloques }</small>
+          </label>
+          <ym-template-editor inputId="tpl-body" [ariaLabel]="isReply() ? 'Texto de la respuesta' : 'Texto de la publicación'" [rows]="6" [usage]="f.usage"
+                              [blocks]="store.blockNames()" [value]="f.body" (valueChange)="patch({ body: $event })" />
+          <p class="hint">{{ f.body.length }} caracteres @if (counters(); as c) { · {{ meta[activePreview()!].label }}: {{ c }} }</p>
+        </div>
+      </section>
+
+      <section class="card grid gap-2 p-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="flex-1 text-xs font-semibold uppercase tracking-wide muted">Adjuntos <span class="normal-case">· {{ f.media.length }} de {{ mediaMax }}</span></h2>
+          <label class="btn btn-sm cursor-pointer">
+            <ym-icon name="upload" [size]="13" /> Subir
+            <input type="file" class="sr-only" multiple accept="video/*,image/*,application/pdf" (change)="upload($event)" />
+          </label>
+        </div>
+        <ym-media-strip [items]="f.media" (itemsChange)="setMedia($event)" (add)="picking.set(true)" />
+        @for (u of uploads(); track u.key) {
+          <p class="flex items-center gap-2 text-xs muted"><ym-icon name="spinner" [size]="12" class="animate-spin" /> Subiendo {{ u.fileName }}… se añade al terminar.</p>
+        }
+        @if (hasMissing()) {
+          <div class="notice notice-error flex flex-wrap items-center gap-2">
+            <span class="flex-1">Algún archivo ya no está en la biblioteca: al usar la plantilla se omite.</span>
+            <button type="button" class="btn btn-sm" (click)="removeMissing()">Quitarlos</button>
+          </div>
+        }
+        <p class="hint">Vienen de la biblioteca: lo que subas aquí también queda en Medios. La primera es la portada.</p>
+      </section>
+
+      @if (!isReply()) {
+        <section class="card grid gap-3 p-4">
+          <div>
+            <label class="label" for="tpl-tags">Etiquetas de YouTube <small>separadas por comas</small></label>
+            <input id="tpl-tags" class="input" maxlength="600" [value]="f.tags" (input)="patch({ tags: $any($event.target).value })" />
+          </div>
+          <ym-checkbox [checked]="f.isDefault" (checkedChange)="patch({ isDefault: $event })">Aplicarla sola al abrir Publicar (por defecto)</ym-checkbox>
+        </section>
+      }
+    </div>
+
+    <!-- VISTA PREVIA Y REVISIÓN -->
+    <div class="grid min-w-0 content-start gap-4 lg:sticky lg:top-4">
+      <section class="card p-4">
+        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide muted">Vista previa</h2>
+        <div class="mb-2 flex flex-wrap gap-1" role="tablist" aria-label="Red de la vista previa">
+          @for (p of previewNetworks(); track p) {
+            <button type="button" role="tab" class="rounded-full border px-2.5 py-0.5 text-xs font-medium" [attr.aria-selected]="p === activePreview()"
+                    [class]="p === activePreview() ? 'border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900' : 'border-line'"
+                    (click)="previewPlatform.set(p)">{{ meta[p].label }}</button>
+          }
+        </div>
+        <p class="mb-2 text-[11px] muted">
+          Ejemplo con @if (isReply()) { el cliente <b>María López</b> } @else { el video «Cómo preparar el pedido en 5 minutos» }
+          @if (sampleAccount(); as a) { y la cuenta <b>{{ a.alias ?? a.displayName }}</b> }@if (fields().length) { · los campos se ven entre corchetes }.
+        </p>
+        @if (isReply()) {
+          <div class="flex flex-col gap-2 rounded-xl bg-[#e7ded3] p-3 dark:bg-[#1a1612]">
+            <div class="max-w-[90%] self-end rounded-xl bg-[#d9fdd3] px-3 py-2 text-sm text-slate-900 shadow-sm">
+              @for (m of usableMedia(); track m.id) {
+                <div class="mb-1.5 flex items-center gap-2 rounded-lg bg-black/5 px-2 py-1.5 text-xs"><ym-icon name="paperclip" [size]="12" /> <span class="truncate">{{ m.title }}</span></div>
+              }
+              <p class="whitespace-pre-wrap break-words">{{ preview().body || '…' }}</p>
+            </div>
+          </div>
+        } @else if (sampleAccount()) {
+          <ym-publish-preview [account]="sampleAccount()!" [media]="usableMedia()" [kind]="kind().kind ?? 'TEXT'" [title]="preview().title" [description]="preview().body" />
+        }
+      </section>
+
+      <section class="card p-4" aria-live="polite">
+        <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide muted">Revisión</h2>
+        <ul class="grid gap-1.5 text-sm">
+          @for (e of errors(); track e) {
+            <li class="flex gap-2 text-red-600 dark:text-red-400"><ym-icon name="error" [size]="14" class="mt-0.5 shrink-0" /> {{ e }}</li>
+          }
+          @for (c of checks(); track c.text) {
+            <li class="flex gap-2" [class]="c.tone === 'warn' ? 'text-amber-700 dark:text-amber-300' : c.tone === 'error' ? 'text-red-600 dark:text-red-400' : ''">
+              <ym-icon [name]="c.tone === 'ok' ? 'success' : c.tone === 'info' ? 'info' : c.tone === 'error' ? 'error' : 'warning'" [size]="14"
+                       class="mt-0.5 shrink-0" [class.text-emerald-600]="c.tone === 'ok'" [class.text-sky-600]="c.tone === 'info'" />
+              <span>{{ c.text }}</span>
+            </li>
+          }
+        </ul>
+      </section>
+    </div>
+  </div>
+}
+
+@if (picking()) {
+  <ym-media-picker [exclude]="excluded()" (picked)="addMedia($event)" (closed)="picking.set(false)" />
+}

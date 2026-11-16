@@ -1,0 +1,130 @@
+@let realtime = connected() ? 'conectado' : 'reconectando';
+
+<div class="flex min-h-screen flex-col md:flex-row">
+  <!-- Navegación: barra lateral en escritorio, barra de pestañas inferior en móvil. -->
+  <nav aria-label="Principal"
+       class="fixed inset-x-0 bottom-0 z-40 flex shrink-0 justify-around border-t border-white/10 bg-navy px-1 pb-[env(safe-area-inset-bottom)] text-slate-300
+              md:sticky md:top-0 md:h-screen md:w-56 md:flex-col md:justify-start md:gap-1 md:border-0 md:px-3 md:py-4">
+    <a routerLink="/home" class="mb-4 hidden items-center gap-2 px-2 pb-2 text-base font-bold text-white no-underline md:flex">
+      <span class="grid h-8 w-8 place-items-center rounded-lg bg-gradient-to-br from-brand to-brand-dark"><ym-icon name="play" [size]="14" /></span>
+      YoutubeMeta
+    </a>
+    <!-- Escritorio: menú completo por grupos. -->
+    @for (group of nav; track $index) {
+      @if (group.label) { <div class="mt-3 hidden px-3 text-[10px] font-semibold uppercase tracking-wider text-slate-500 md:block">{{ group.label }}</div> }
+      @for (item of group.items; track item.path) {
+        <a [routerLink]="item.path" routerLinkActive="!text-white !bg-brand/15 shadow-[inset_3px_0_0_#ff8a00]" ariaCurrentWhenActive="page"
+           class="hidden items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-300 no-underline hover:bg-white/5 md:flex">
+          <ym-icon [name]="item.icon" [size]="18" />
+          <span class="truncate">{{ item.label }}</span>
+          @if (badge(item); as count) {
+            <span class="ml-auto rounded-full px-1.5 text-[11px] font-bold text-white" [class]="item.badge === 'inbox' ? 'bg-red-600' : 'bg-brand'"
+                  [attr.aria-label]="count + (item.badge === 'inbox' ? ' sin leer' : ' activas')">{{ count }}</span>
+          }
+        </a>
+      }
+    }
+    <!-- Móvil: lo principal en la barra y el resto en «Más». -->
+    @for (item of mobileNav; track item.path) {
+      <a [routerLink]="item.path" routerLinkActive="!text-white" ariaCurrentWhenActive="page"
+         class="relative flex min-w-0 flex-1 flex-col items-center gap-0.5 rounded-lg px-0.5 py-2 text-[10px] text-slate-300 no-underline hover:bg-white/5 md:hidden">
+        <ym-icon [name]="item.icon" [size]="18" />
+        <span class="max-w-full truncate">{{ item.label }}</span>
+        @if (badge(item); as count) {
+          <span class="absolute right-[calc(50%-1.6rem)] top-1 rounded-full bg-red-600 px-1.5 text-[10px] font-bold text-white" aria-hidden="true">{{ count }}</span>
+        }
+      </a>
+    }
+    <div class="relative flex min-w-0 flex-1 md:hidden">
+      <button type="button" class="flex w-full flex-col items-center gap-0.5 rounded-lg px-0.5 py-2 text-[10px] text-slate-300 hover:bg-white/5"
+              [attr.aria-expanded]="moreOpen()" aria-haspopup="true" (click)="toggleMore($event)">
+        <ym-icon name="sliders" [size]="18" /><span>Más</span>
+      </button>
+      @if (moreOpen()) {
+        <div class="card absolute bottom-14 right-0 z-50 w-56 py-1 text-slate-800 dark:text-slate-100" (click)="$event.stopPropagation()">
+          @for (item of moreNav; track item.path) {
+            <a [routerLink]="item.path" routerLinkActive="font-semibold text-brand-dark" (click)="moreOpen.set(false)"
+               class="flex items-center gap-2 px-4 py-2.5 text-sm text-inherit no-underline hover:bg-surface-hover">
+              <ym-icon [name]="item.icon" [size]="16" /> {{ item.label }}
+              @if (badge(item); as count) { <span class="ml-auto rounded-full bg-brand px-1.5 text-[11px] font-bold text-white">{{ count }}</span> }
+            </a>
+          }
+        </div>
+      }
+    </div>
+    <div class="mt-auto hidden items-center gap-1 px-2 text-[11px] text-slate-400 md:flex">
+      Tiempo real:
+      <span class="inline-flex items-center gap-1" [class]="connected() ? 'text-green-400' : 'text-amber-400'"><ym-icon name="dot" [size]="10" /> {{ realtime }}</span>
+    </div>
+  </nav>
+
+  <div class="flex min-w-0 flex-1 flex-col pb-16 md:pb-0">
+    <header class="sticky top-0 z-30 flex h-14 items-center gap-2 border-b border-line bg-surface/90 px-4 backdrop-blur md:gap-3 md:px-6">
+      <a routerLink="/home" class="flex items-center gap-2 font-bold text-inherit no-underline md:hidden" aria-label="YoutubeMeta, ir al inicio">
+        <span class="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-brand to-brand-dark text-white"><ym-icon name="play" [size]="12" /></span>
+      </a>
+      <!-- En móvil la barra lateral no se ve: el estado del tiempo real va en la cabecera. -->
+      <span class="inline-flex items-center gap-1 text-[11px] md:hidden" [class]="connected() ? 'text-green-600 dark:text-green-400' : 'text-amber-600 dark:text-amber-400'"
+            role="status" [attr.aria-label]="'Tiempo real: ' + realtime" [title]="'Tiempo real: ' + realtime">
+        <ym-icon name="dot" [size]="10" /><span class="hidden min-[380px]:inline">{{ realtime }}</span>
+      </span>
+      <div class="flex-1"></div>
+
+      @if (healthAlert(); as h) {
+        <a routerLink="/insights" class="btn btn-ghost btn-sm btn-icon" [class]="h.dot" [title]="h.label + (h.alerts.length ? ': ' + h.alerts[0] : '')" [attr.aria-label]="'Salud del sistema: ' + h.label">
+          <ym-icon name="warning" />
+        </a>
+      }
+
+      <button type="button" class="btn btn-ghost btn-sm btn-icon" (click)="theme.toggle()" [attr.aria-label]="theme.dark() ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'"
+              [title]="theme.dark() ? 'Tema claro' : 'Tema oscuro'">
+        <ym-icon [name]="theme.dark() ? 'sun' : 'moon'" />
+      </button>
+
+      <div class="relative">
+        <button type="button" class="btn btn-sm btn-icon relative" (click)="toggleNotifications($event)" [attr.aria-expanded]="notificationsOpen()"
+                aria-haspopup="true" [attr.aria-label]="unread() > 0 ? 'Avisos, ' + unread() + ' sin leer' : 'Avisos'">
+          <ym-icon name="bell" />
+          @if (unread() > 0) {
+            <span class="absolute -right-1.5 -top-1.5 rounded-full bg-red-600 px-1.5 text-[10px] font-bold text-white" aria-hidden="true">{{ unread() }}</span>
+          }
+        </button>
+        @if (notificationsOpen()) {
+          <div class="card absolute right-0 top-11 z-40 max-h-[70vh] w-[min(360px,90vw)] overflow-y-auto" (click)="$event.stopPropagation()">
+            @if (browserNotifications.supported) {
+              <label class="flex items-center gap-2 border-b border-line px-4 py-2.5 text-xs">
+                <input type="checkbox" [checked]="browserNotifications.enabled()" (change)="browserNotifications.toggle()" />
+                Avisarme en el escritorio cuando algo se publique o falle, o llegue un mensaje (con la pestaña en segundo plano)
+              </label>
+            }
+            @for (n of notifications(); track n.id) {
+              <button type="button" class="block w-full border-b border-line-soft px-4 py-3 text-left text-sm last:border-0 hover:bg-surface-hover"
+                      (click)="openNotification(n)">
+                <div class="mb-1 flex items-center gap-2">
+                  <ym-status-chip [status]="n.statusCode" [platform]="n.target" [account]="n.connectionName" />
+                  <span class="text-[11px] muted">{{ n.createdAt | date: 'dd/MM HH:mm' }}</span>
+                </div>
+                <div class="font-medium">{{ n.videoTitle }}</div>
+                <div class="text-xs muted">{{ n.message }}</div>
+              </button>
+            } @empty {
+              <div class="p-4 text-center text-sm muted">Sin avisos.</div>
+            }
+          </div>
+        }
+      </div>
+
+      <div class="flex items-center gap-2 text-sm">
+        <span class="grid h-8 w-8 place-items-center rounded-full bg-blue-600 text-xs font-bold text-white" aria-hidden="true">{{ initials() }}</span>
+        <span class="hidden muted sm:inline">{{ session.user()?.userName }}</span>
+        <button type="button" class="btn btn-ghost btn-sm" (click)="logout()"><ym-icon name="logout" [size]="14" /> <span class="hidden sm:inline">Salir</span></button>
+      </div>
+    </header>
+
+    <main class="flex-1 px-4 py-5 md:px-6">
+      <router-outlet />
+    </main>
+  </div>
+</div>
+
+<ym-session-dialog />

@@ -1,0 +1,10 @@
+global using Dapper;
+global using Microsoft.AspNetCore.Mvc;
+global using Microsoft.Extensions.Options;
+global using System.Data;
+global using YoutubeMeta.Api.Common;
+global using YoutubeMeta.Api.Domain.Constants;
+global using YoutubeMeta.Api.Domain.Entities;
+global using YoutubeMeta.Api.Domain.Requests;
+global using YoutubeMeta.Api.Domain.Responses;
+global using YoutubeMeta.Api.Domain.Settings;

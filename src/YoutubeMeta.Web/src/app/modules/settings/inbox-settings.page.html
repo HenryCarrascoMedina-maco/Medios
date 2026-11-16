@@ -1,0 +1,129 @@
+<ym-settings-tabs />
+<div class="mb-4">
+  <h1 class="text-xl font-bold">Ajustes › Bandeja</h1>
+  <p class="max-w-3xl text-sm muted">
+    Qué cuentas reciben en la <a routerLink="/inbox">Bandeja</a> y cómo les llegan los mensajes. Facebook, Instagram, WhatsApp y Telegram (con dirección pública) avisan al
+    instante; YouTube y Teams se consultan cada pocos minutos.
+  </p>
+</div>
+
+<ym-async-state [loader]="data">
+  @if (data.value(); as s) {
+    @if (!s.publicUrlConfigured) {
+      <div class="notice notice-warn mb-3">
+        Este servidor no tiene <b>dirección pública con https</b> (<code>App:PublicBaseUrl</code>): Facebook, Instagram y WhatsApp no pueden avisar de los mensajes y
+        Telegram se consulta cada pocos segundos. En desarrollo usa un túnel (Dev Tunnels o cloudflared). <a routerLink="/guides/whatsapp" [queryParams]="{ step: 'webhook' }">Cómo</a>.
+      </div>
+    }
+
+    <section class="card mb-4 p-4">
+      <h2 class="mb-1 flex items-center gap-2 font-semibold"><ym-icon name="facebook" [size]="16" class="text-facebook" /> Webhook de Meta <small class="font-normal muted">Facebook, Instagram y WhatsApp</small></h2>
+      @if (s.metaAppConfigured && s.metaWebhookUrl) {
+        <p class="mb-2 text-xs muted">Pega estos dos datos en tu app de Meta (Webhooks) y suscribe los campos de la guía.</p>
+        <div class="grid gap-2 sm:grid-cols-[auto_1fr_auto] sm:items-center">
+          <span class="label !mb-0">URL del webhook</span>
+          <code class="break-all rounded bg-field px-2 py-1 text-xs">{{ s.metaWebhookUrl }}</code>
+          <button type="button" class="btn btn-sm" (click)="copy(s.metaWebhookUrl)">Copiar</button>
+          <span class="label !mb-0">Texto de verificación</span>
+          <code class="break-all rounded bg-field px-2 py-1 text-xs">{{ s.metaVerifyToken }}</code>
+          <button type="button" class="btn btn-sm" (click)="copy(s.metaVerifyToken)">Copiar</button>
+        </div>
+      } @else {
+        <p class="text-sm muted">
+          @if (!s.metaAppConfigured) { Falta la <b>app de Meta</b> (App ID y App Secret) en <a routerLink="/settings">Ajustes › Plataformas</a>. }
+          @else { Falta la dirección pública del servidor para formar la URL del webhook. }
+          <a routerLink="/guides/whatsapp" [queryParams]="{ step: 'app-meta' }">Ver la guía</a>.
+        </p>
+      }
+    </section>
+
+    <section class="card mb-4 p-4">
+      <h2 class="mb-3 font-semibold">Cuentas</h2>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[720px] text-sm">
+          <thead>
+            <tr class="border-b border-line text-left text-xs muted">
+              <th class="py-2 pr-3 font-semibold">Cuenta</th>
+              <th class="py-2 pr-3 font-semibold">Privados</th>
+              <th class="py-2 pr-3 font-semibold">Comentarios</th>
+              <th class="py-2 pr-3 font-semibold">Cómo llega</th>
+              <th class="py-2 font-semibold">Estado</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (a of s.accounts; track a.id) {
+              <tr class="border-b border-line-soft align-top last:border-0">
+                <td class="py-2.5 pr-3">
+                  <div class="flex items-center gap-2">
+                    <ym-account-avatar [platform]="a.platform" [name]="a.name" [url]="a.avatarUrl" [size]="28" />
+                    <div class="min-w-0"><b class="block truncate">{{ a.name }}</b><span class="block truncate text-xs muted">{{ meta[a.platform].label }} · {{ a.accountHint ?? a.credentialName }}</span></div>
+                  </div>
+                </td>
+                <td class="py-2.5 pr-3">
+                  @if (a.supportsDirect) {
+                    <input type="checkbox" [checked]="a.inboxDirect" [disabled]="busy() !== null" (change)="toggle(a, 'inboxDirect')" [attr.aria-label]="'Recibir privados de ' + a.name" />
+                  } @else { <span class="text-xs muted">No existe</span> }
+                </td>
+                <td class="py-2.5 pr-3">
+                  @if (a.supportsComments) {
+                    <input type="checkbox" [checked]="a.inboxComments" [disabled]="busy() !== null" (change)="toggle(a, 'inboxComments')" [attr.aria-label]="'Recibir comentarios de ' + a.name" />
+                  } @else { <span class="text-xs muted">—</span> }
+                </td>
+                <td class="py-2.5 pr-3"><ym-chip [tone]="modeMeta[a.mode].tone">{{ modeMeta[a.mode].label }}</ym-chip></td>
+                <td class="py-2.5">
+                  @if (a.problem) {
+                    <p class="text-xs text-amber-700 dark:text-amber-300">{{ a.problem }}</p>
+                    @if (a.fix; as fix) {
+                      @if (fixLink[fix].path; as path) { <a class="btn btn-sm mt-1 no-underline" [routerLink]="path">{{ fixLink[fix].label }}</a> }
+                      @else { <a class="btn btn-sm mt-1 no-underline" [routerLink]="['/guides', guideOf(a)]">{{ fixLink[fix].label }}</a> }
+                    }
+                  } @else {
+                    <ym-chip tone="success">Recibiendo</ym-chip>
+                    <span class="ml-1 text-xs muted">
+                      @if (a.lastInboundAt) { último mensaje {{ formatAgo(a.lastInboundAt) }} } @else if (a.lastOkAt) { comprobada {{ formatAgo(a.lastOkAt) }} }
+                    </span>
+                    @if (a.lastError) { <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ a.lastError }}</p> }
+                  }
+                  @if (a.mode !== 'NONE' && a.statusCode === 'CONNECTED') {
+                    <button type="button" class="btn btn-ghost btn-sm mt-1" [disabled]="busy() !== null" (click)="prepare(a)" title="Vuelve a suscribir la cuenta a los avisos">
+                      <ym-icon name="retry" [size]="12" /> {{ busy() === 'prep-' + a.id ? 'Preparando…' : 'Preparar de nuevo' }}
+                    </button>
+                  }
+                </td>
+              </tr>
+            } @empty {
+              <tr><td colspan="5" class="py-6 text-center text-sm muted">No hay cuentas conectadas. <a routerLink="/connections">Conecta una</a>.</td></tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      <p class="mt-2 text-xs muted">TikTok no permite leer mensajes ni comentarios a aplicaciones como esta. Los canales de Teams por webhook solo envían.</p>
+    </section>
+
+    <section class="card mb-4 flex flex-wrap items-center gap-3 p-4">
+      <ym-icon name="zap" [size]="18" class="text-brand" />
+      <p class="min-w-0 flex-1 text-sm">
+        <b>Tus respuestas</b> (se eligen escribiendo <code>/atajo</code> en el compositor) ahora son plantillas: pueden llevar el nombre del cliente, campos a
+        completar y archivos.
+      </p>
+      <a class="btn btn-sm" routerLink="/settings/templates" [queryParams]="{ ver: 'REPLY' }">Ver en Plantillas</a>
+    </section>
+
+    <section class="card p-4">
+      <h2 class="mb-1 font-semibold">Conservación de datos</h2>
+      <ul class="list-disc space-y-1 pl-5 text-sm muted">
+        <li>Los mensajes se guardan <b>{{ s.retentionMonths }} meses</b> y luego se borran solos (son datos personales de terceros). Se cambia en <code>Jobs:Inbox:MessageRetentionMonths</code>.</li>
+        <li>Archivos recibidos:
+          @if (s.keepReceivedFiles) {
+            se guarda una <b>copia</b> (hasta {{ s.keepFileMaxMb }} MB cada uno) para que sigan abriendo cuando la red los caduque; se borran con los mensajes.
+          } @else {
+            <b>no se copian</b>: se abren desde la red mientras los guarde (WhatsApp unas semanas; los enlaces de Messenger e Instagram, menos).
+          }
+          Se cambia en <code>Jobs:Inbox:KeepReceivedFiles</code> y <code>KeepFileMaxMb</code>.</li>
+        <li>La agenda (contactos dados de alta a mano) no se borra sola. Los enlaces de invitación valen <b>{{ s.inviteDays ?? 30 }} días</b> y un solo uso (<code>Jobs:Inbox:InviteDays</code>).</li>
+        <li>Responder entre 24 h y 7 días en Messenger e Instagram (etiqueta «agente humano»):
+          <b>{{ s.humanAgentEnabled ? 'activado' : 'desactivado' }}</b>. Actívalo (<code>Jobs:Inbox:MetaHumanAgentTag</code>) solo si Meta aprobó ese permiso para tu app.</li>
+      </ul>
+    </section>
+  }
+</ym-async-state>
